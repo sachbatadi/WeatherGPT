@@ -18,3 +18,9 @@ class WeatherState(TypedDict, total=False):
     alert_status: str
 
     replanning_required: bool
+
+    # Strategist and downstream payloads
+    strategist_output: Dict[str, Any]
+    radio_gpt_payload: List[Dict[str, Any]]
+    dashboard_payload: List[Dict[str, Any]]
+    strategist_assessments: List[Dict[str, Any]]

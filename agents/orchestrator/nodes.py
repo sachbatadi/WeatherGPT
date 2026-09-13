@@ -1,61 +1,53 @@
+import sys
 from .state import WeatherState
+from agents.strategist import run_strategist_node
+
+
+def _safe_print(text: str) -> None:
+    """Safe print helper that prevents Windows console encoding crashes."""
+    try:
+        print(text)
+    except (UnicodeEncodeError, UnicodeError):
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        print(text.encode(enc, errors="replace").decode(enc))
 
 
 def run_sentinel(state: WeatherState) -> WeatherState:
-    print("\n👁️ Sentinel Agent running...")
+    _safe_print("\n👁️ Sentinel Agent running...")
 
-    # Temporary mock data.
-    # Later this will be replaced by your friend's real Sentinel Agent.
+    # Sentinel threat detection
+    # (To be replaced with Sentinel live API detector in Member 2 integration)
     state["threat_detected"] = True
 
+    location = state.get("location", "Jalandhar")
     state["threat"] = {
-        "event_id": "EVT001",
+        "event_id": "EVT-20260913-001",
         "event_type": "heavy_rain",
         "severity": "high",
         "probability": 0.85,
-        "location": state["location"],
+        "confidence": "high",
+        "location": location,
         "time_to_event_minutes": 30,
-        "rainfall_mm": 60
+        "duration_hours": 3.0,
+        "rainfall_mm": 60.0,
+        "wind_speed_kmh": 22.0,
+        "temp_c": 26.0,
+        "humidity_pct": 88.0
     }
 
-    print("⚠️ Threat detected: Heavy Rain")
-    print(f"📍 Location: {state['location']}")
-    print("🌧️ Expected rainfall: 60 mm")
-    print("⏱️ Expected in: 30 minutes")
+    _safe_print("⚠️ Threat detected: Heavy Rain")
+    _safe_print(f"📍 Location: {location}")
+    _safe_print("🌧️ Expected rainfall: 60.0 mm")
+    _safe_print("⏱️ Expected in: 30 minutes")
 
     return state
 
 
 def run_strategist(state: WeatherState) -> WeatherState:
-    print("\n🧠 Strategist Agent running...")
-
-    # Temporary mock data.
-    # Later this will be replaced by your friend's real Strategist Agent.
-    state["affected_farmers"] = [
-        {
-            "id": "F001",
-            "crop": "Wheat",
-            "crop_stage": "Flowering"
-        },
-        {
-            "id": "F002",
-            "crop": "Wheat",
-            "crop_stage": "Flowering"
-        }
-    ]
-
-    state["risk_level"] = "high"
-
-    state["recommended_actions"] = [
-        "Stop pesticide spraying",
-        "Prepare field drainage",
-        "Protect harvested produce"
-    ]
-
-    state["alert_required"] = True
-
-    print("👨‍🌾 Affected farmers: 2")
-    print("🚨 Risk level: HIGH")
-    print("📋 Action plan generated")
-
-    return state
+    """
+    Executes the real Strategist Agent (Agricultural Decision Engine).
+    Queries FarmerDB, evaluates agronomic risk, reschedules conflicting activities,
+    and generates multilingual voice scripts and dashboard telemetry.
+    """
+    _safe_print("\n🧠 Strategist Agent running (Real Decision Engine)...")
+    return run_strategist_node(state)
