@@ -1,4 +1,13 @@
+import sys
 from .state import WeatherState
+
+
+def _safe_print(text: str) -> None:
+    try:
+        print(text)
+    except (UnicodeEncodeError, UnicodeError):
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        print(text.encode(enc, errors="replace").decode(enc))
 
 
 def threat_router(state: WeatherState) -> str:
@@ -7,8 +16,8 @@ def threat_router(state: WeatherState) -> str:
     """
 
     if state.get("threat_detected", False):
-        print("\n🚨 Threat detected → Sending to Strategist")
+        _safe_print("\n🚨 Threat detected → Sending to Strategist")
         return "strategist"
 
-    print("\n✅ No significant threat → Continue monitoring")
+    _safe_print("\n✅ No significant threat → Continue monitoring")
     return "monitor"
