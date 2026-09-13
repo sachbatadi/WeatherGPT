@@ -11,11 +11,16 @@ from .schemas import (
     IrrigationMethod,
     ActionType,
     UrgencyLevel,
+    RiskBreakdown,
+    NextObservationTrigger,
+    LanguageVoiceScripts,
     FarmActivity,
     FarmerProfile,
     ActionItem,
     FarmerAssessment,
     StrategistOutput,
+    FarmerQueryRequest,
+    FarmerQueryResponse
 )
 from .risk_engine import RiskEngine
 from .agent import StrategistAgent, run_strategist_node
@@ -32,9 +37,14 @@ __all__ = [
     "IrrigationMethod",
     "ActionType",
     "UrgencyLevel",
+    "RiskBreakdown",
+    "NextObservationTrigger",
+    "LanguageVoiceScripts",
     "FarmActivity",
     "FarmerProfile",
     "ActionItem",
     "FarmerAssessment",
     "StrategistOutput",
+    "FarmerQueryRequest",
+    "FarmerQueryResponse"
 ]

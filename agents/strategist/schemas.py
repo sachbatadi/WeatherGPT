@@ -3,8 +3,9 @@ Strategist Agent Schemas (Member 3).
 
 Defines the core data models and contracts for:
 1. Input: Threat JSON + Farm Profiles & Plans
-2. Processing: Agronomic risk evaluations
-3. Output: Risk + Action payloads for Orchestrator, Radio-GPT, Dashboard & Database.
+2. Processing: Agronomic risk evaluations, risk score breakdown
+3. Conversational AI: Answering farmer queries ("Why did you change my plan?")
+4. Output: Multilingual Voice Scripts (Radio-GPT), Dashboard Cards, and Re-planning Actions.
 """
 
 from enum import Enum
@@ -32,8 +33,10 @@ class CropType(str, Enum):
     TOMATO = "tomato"
     MUSTARD = "mustard"
     MAIZE = "maize"
-    SUGARCANE = "sugarcane"
     POTATO = "potato"
+    SUGARCANE = "sugarcane"
+    SOYBEAN = "soybean"
+    PULSES = "pulses"
     OTHER = "other"
 
 
@@ -52,24 +55,28 @@ class SoilType(str, Enum):
     SANDY = "sandy"
     SILTY = "silty"
     BLACK_SOIL = "black_soil"
+    RED_SOIL = "red_soil"
 
 
 class IrrigationMethod(str, Enum):
     FLOOD = "flood"
     DRIP = "drip"
     SPRINKLER = "sprinkler"
+    FURROW = "furrow"
     RAINFED = "rainfed"
 
 
 class ActionType(str, Enum):
     POSTPONE_IRRIGATION = "postpone_irrigation"
     RESCHEDULE_SPRAY = "reschedule_spray"
+    DELAY_FERTILIZATION = "delay_fertilization"
     EXPEDITE_HARVEST = "expedite_harvest"
     HALT_HARVEST = "halt_harvest"
     DRAINAGE_PREPARATION = "drainage_preparation"
     PROTECTIVE_COVERING = "protective_covering"
     HEAT_STRESS_MITIGATION = "heat_stress_mitigation"
     FROST_PROTECTION = "frost_protection"
+    DISEASE_PREVENTATIVE = "disease_preventative"
     NO_ACTION = "no_action"
 
 
@@ -81,11 +88,23 @@ class UrgencyLevel(str, Enum):
 
 
 # ---------------------------------------------------------------------------
+# Risk Factor Breakdown
+# ---------------------------------------------------------------------------
+
+class RiskBreakdown(BaseModel):
+    """Component-level risk breakdown for detailed dashboard telemetry."""
+    precipitation_risk: float = Field(0.0, ge=0.0, le=100.0, description="Flooding / waterlogging / pollen wash risk")
+    wind_risk: float = Field(0.0, ge=0.0, le=100.0, description="Spray drift / lodging risk")
+    thermal_risk: float = Field(0.0, ge=0.0, le=100.0, description="Heatwave or frost risk")
+    disease_risk: float = Field(0.0, ge=0.0, le=100.0, description="High humidity fungal / blight risk")
+
+
+# ---------------------------------------------------------------------------
 # Farm Profile & Scheduled Activities
 # ---------------------------------------------------------------------------
 
 class FarmActivity(BaseModel):
-    """An individual farm task scheduled in the farmer's plan."""
+    """An individual farm task scheduled in the farmer's calendar."""
     activity_id: str = Field(..., description="Unique activity ID (e.g. ACT-001)")
     activity_type: str = Field(
         ...,
@@ -93,11 +112,11 @@ class FarmActivity(BaseModel):
     )
     scheduled_date: str = Field(
         ...,
-        description="Scheduled date string (e.g. 2026-09-15 or relative 'tomorrow')"
+        description="Scheduled date string (e.g. 2026-09-15)"
     )
     details: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Details such as water volume, chemical type, target area"
+        description="Activity details such as chemical name, target area, water depth"
     )
     status: str = Field(
         default="scheduled",
@@ -107,20 +126,22 @@ class FarmActivity(BaseModel):
 
 class FarmerProfile(BaseModel):
     """
-    Farmer Profile & active context maintained by Database/Orchestrator.
+    Farmer Profile & active context stored in Database.
     """
-    farmer_id: str = Field(..., description="Unique identifier for the farmer (e.g. F001)")
+    farmer_id: str = Field(..., description="Unique identifier (e.g. F001)")
     name: str = Field(..., description="Farmer full name")
     phone: Optional[str] = Field(None, description="Contact phone number for SMS/voice alert")
-    language: str = Field(default="en", description="Preferred language code: en, hi, pa, etc.")
-    location: str = Field(..., description="Village / District name (e.g. Jalandhar)")
+    language: str = Field(default="en", description="Preferred language code: en, hi, pa")
+    location: str = Field(..., description="Village / District (e.g. Jalandhar)")
+    district: Optional[str] = None
+    state: Optional[str] = None
     land_size_acres: Optional[float] = Field(None, description="Land area in acres")
 
     # Agronomic context
-    crop: str = Field(..., description="Primary crop (e.g. Wheat, Rice, Cotton)")
+    crop: str = Field(..., description="Primary crop (e.g. Wheat, Rice, Cotton, Tomato)")
     crop_stage: str = Field(..., description="Current growth stage: sowing, vegetative, flowering, grain_filling, maturity, harvesting")
     soil_type: str = Field(default="loamy", description="Soil type: clay, loamy, sandy, silty, black_soil")
-    irrigation_method: str = Field(default="flood", description="Irrigation method: flood, drip, sprinkler, rainfed")
+    irrigation_method: str = Field(default="flood", description="Method: flood, drip, sprinkler, furrow, rainfed")
 
     # Active farm plan
     current_plan: List[FarmActivity] = Field(
@@ -144,14 +165,30 @@ class ActionItem(BaseModel):
     affected_activity_id: Optional[str] = Field(None, description="ID of affected FarmActivity")
 
 
+class LanguageVoiceScripts(BaseModel):
+    """Multilingual voice alert scripts for Member 4 (Radio-GPT)."""
+    en: str = Field(..., description="English script for TTS / Phone Call")
+    hi: str = Field(..., description="Hindi (हिन्दी) script for TTS / Phone Call")
+    pa: str = Field(..., description="Punjabi (ਪੰਜਾਬੀ) script for TTS / Phone Call")
+
+
+class NextObservationTrigger(BaseModel):
+    """Instruction for Sentinel Agent when to re-evaluate the field (Agent Loop)."""
+    trigger_type: str = Field(..., description="e.g. 'reassess_soil_moisture', 'wind_normalization'")
+    reassess_after_hours: int = Field(..., description="Hours to wait before re-checking forecast/soil")
+    condition: str = Field(..., description="Condition to verify before reverting or progressing plan")
+
+
 class FarmerAssessment(BaseModel):
     """Detailed risk assessment and tailored action plan for a single farmer."""
     farmer_id: str
     farmer_name: str
     crop: str
     crop_stage: str
+    soil_type: str
     risk_level: SeverityLevel
-    risk_score: float = Field(..., ge=0.0, le=100.0, description="Risk index between 0 and 100")
+    risk_score: float = Field(..., ge=0.0, le=100.0, description="Composite risk index between 0 and 100")
+    risk_breakdown: RiskBreakdown = Field(default_factory=RiskBreakdown)
     risk_factors: List[str] = Field(default_factory=list, description="List of detected vulnerability factors")
     actions: List[ActionItem] = Field(default_factory=list)
 
@@ -164,7 +201,11 @@ class FarmerAssessment(BaseModel):
     # Subsystem-specific payloads
     radio_gpt_script: str = Field(
         ...,
-        description="Tailored voice script for Member 4 (Radio-GPT) telephony call"
+        description="Default voice script (in farmer's preferred language)"
+    )
+    multilingual_scripts: LanguageVoiceScripts = Field(
+        ...,
+        description="Complete multi-lingual scripts (English, Hindi, Punjabi)"
     )
     dashboard_summary: Dict[str, Any] = Field(
         default_factory=dict,
@@ -173,6 +214,7 @@ class FarmerAssessment(BaseModel):
 
     replanning_required: bool = False
     updated_plan: List[FarmActivity] = Field(default_factory=list)
+    next_observation: Optional[NextObservationTrigger] = None
 
 
 class StrategistOutput(BaseModel):
@@ -186,7 +228,6 @@ class StrategistOutput(BaseModel):
     assessments: List[FarmerAssessment]
     alert_required: bool
 
-    # Helper for seamless Orchestrator integration
     def to_orchestrator_state(self) -> Dict[str, Any]:
         """Convert assessment into Orchestrator's WeatherState patch dictionary."""
         recommended_actions: List[str] = []
@@ -199,6 +240,7 @@ class StrategistOutput(BaseModel):
                 "name": a.farmer_name,
                 "crop": a.crop,
                 "crop_stage": a.crop_stage,
+                "soil_type": a.soil_type,
                 "risk_level": a.risk_level.value,
                 "risk_score": a.risk_score
             })
@@ -216,3 +258,23 @@ class StrategistOutput(BaseModel):
             "replanning_required": any_replanning,
             "strategist_assessments": [a.model_dump() for a in self.assessments]
         }
+
+
+# ---------------------------------------------------------------------------
+# Conversational Q&A Schemas ("Why did you change my plan?")
+# ---------------------------------------------------------------------------
+
+class FarmerQueryRequest(BaseModel):
+    """Incoming question from farmer via chat or voice (Module 10)."""
+    farmer_id: str
+    query: str = Field(..., description="Question asked by farmer, e.g. 'Why did you postpone my watering?'")
+    language: str = Field(default="en", description="User language: en, hi, pa")
+
+
+class FarmerQueryResponse(BaseModel):
+    """Response answering the farmer's question with facts, confidence, and reassurance."""
+    farmer_id: str
+    query: str
+    answer: str = Field(..., description="Direct, compassionate, evidence-based answer")
+    evidence: Dict[str, Any] = Field(default_factory=dict, description="Underlying weather and soil facts")
+    recommended_next_step: str = Field(..., description="Action farmer should take right now")
