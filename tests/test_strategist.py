@@ -1,0 +1,230 @@
+"""
+Unit tests for Member 3: Strategist Agent.
+
+Tests all agronomic scenarios and pipeline integration:
+1. Heavy rain causing irrigation postponement & drainage preparation (SIH core scenario)
+2. High winds causing spraying postponement
+3. Mature crop harvest protection against storms
+4. Extreme heat mitigation
+5. Direct integration with Orchestrator's WeatherState
+"""
+
+import unittest
+from agents.strategist import (
+    StrategistAgent,
+    run_strategist_node,
+    SeverityLevel,
+    ActionType,
+    FarmerProfile,
+    FarmActivity
+)
+
+
+class TestStrategistAgent(unittest.TestCase):
+
+    def setUp(self):
+        self.agent = StrategistAgent()
+
+    def test_wheat_heavy_rain_irrigation_scenario(self):
+        """
+        SIH Demo Scenario:
+        Farmer Gurpreet has Wheat in flowering stage on loamy soil.
+        Irrigation is scheduled for Sept 15.
+        Heavy rain (60mm, 85% prob) is detected.
+        Expect:
+        - Postpone irrigation
+        - Reschedule based on soil drainage (loamy = ~4 days)
+        - Advise drainage channel clearance
+        - Replanning flag = True
+        """
+        threat = {
+            "event_id": "EVT-RAIN-001",
+            "event_type": "heavy_rain",
+            "severity": "high",
+            "probability": 0.85,
+            "confidence": "high",
+            "location": "Jalandhar",
+            "time_to_event_minutes": 30,
+            "rainfall_mm": 60.0
+        }
+
+        farmer = FarmerProfile(
+            farmer_id="F001",
+            name="Gurpreet Singh",
+            location="Jalandhar",
+            crop="Wheat",
+            crop_stage="flowering",
+            soil_type="loamy",
+            irrigation_method="flood",
+            current_plan=[
+                FarmActivity(
+                    activity_id="ACT-001",
+                    activity_type="irrigation",
+                    scheduled_date="2026-09-15"
+                )
+            ]
+        )
+
+        result = self.agent.evaluate(threat_data=threat, farmers=[farmer])
+
+        self.assertEqual(result.affected_farmers_count, 1)
+        self.assertIn(result.overall_risk_level, [SeverityLevel.HIGH, SeverityLevel.CRITICAL])
+        self.assertTrue(result.alert_required)
+
+        assessment = result.assessments[0]
+        self.assertTrue(assessment.replanning_required)
+        self.assertGreater(assessment.risk_score, 60.0)
+
+        # Verify recommended actions
+        action_types = [a.action_type for a in assessment.actions]
+        self.assertIn(ActionType.POSTPONE_IRRIGATION, action_types)
+        self.assertIn(ActionType.DRAINAGE_PREPARATION, action_types)
+
+        # Check postponed activity in updated plan
+        postponed_acts = [a for a in assessment.updated_plan if a.activity_id == "ACT-001"]
+        self.assertEqual(len(postponed_acts), 1)
+        self.assertEqual(postponed_acts[0].status, "postponed")
+
+        # Check plain language explanation and radio script
+        self.assertIn("Wheat", assessment.plain_language_explanation)
+        self.assertIn("60", assessment.plain_language_explanation)
+        self.assertIn("Attention Gurpreet Singh", assessment.radio_gpt_script)
+        self.assertIn("60.0 millimeters", assessment.radio_gpt_script)
+
+    def test_high_wind_spray_drift_scenario(self):
+        """
+        Wind speed exceeds safe threshold (15 km/h).
+        Scheduled spraying must be postponed to prevent chemical drift.
+        """
+        threat = {
+            "event_id": "EVT-WIND-001",
+            "event_type": "high_wind",
+            "severity": "medium",
+            "probability": 0.80,
+            "confidence": "high",
+            "location": "Bathinda",
+            "wind_speed_kmh": 30.0
+        }
+
+        farmer = FarmerProfile(
+            farmer_id="F002",
+            name="Baldev Singh",
+            location="Bathinda",
+            crop="Cotton",
+            crop_stage="vegetative",
+            soil_type="sandy",
+            current_plan=[
+                FarmActivity(
+                    activity_id="ACT-002",
+                    activity_type="spraying",
+                    scheduled_date="2026-09-14",
+                    details={"chemical": "Neem oil organic pesticide"}
+                )
+            ]
+        )
+
+        result = self.agent.evaluate(threat_data=threat, farmers=[farmer])
+        assessment = result.assessments[0]
+
+        action_types = [a.action_type for a in assessment.actions]
+        self.assertIn(ActionType.RESCHEDULE_SPRAY, action_types)
+        self.assertTrue(assessment.replanning_required)
+
+        # Verify activity was postponed
+        postponed_acts = [a for a in assessment.updated_plan if a.activity_id == "ACT-002"]
+        self.assertEqual(postponed_acts[0].status, "postponed")
+
+    def test_mature_crop_harvest_protection(self):
+        """
+        Crop at maturity stage facing heavy rain and high winds.
+        Should recommend expediting harvest and covering produce.
+        """
+        threat = {
+            "event_id": "EVT-STORM-001",
+            "event_type": "cyclone",
+            "severity": "critical",
+            "probability": 0.90,
+            "confidence": "high",
+            "location": "Ludhiana",
+            "rainfall_mm": 45.0,
+            "wind_speed_kmh": 40.0
+        }
+
+        farmer = FarmerProfile(
+            farmer_id="F003",
+            name="Jasbir Kaur",
+            location="Ludhiana",
+            crop="Wheat",
+            crop_stage="maturity",
+            soil_type="clay",
+            current_plan=[]
+        )
+
+        result = self.agent.evaluate(threat_data=threat, farmers=[farmer])
+        assessment = result.assessments[0]
+
+        self.assertEqual(assessment.risk_level, SeverityLevel.CRITICAL)
+        action_types = [a.action_type for a in assessment.actions]
+        self.assertIn(ActionType.EXPEDITE_HARVEST, action_types)
+
+    def test_heatwave_scenario(self):
+        """
+        Extreme heat (42°C) during flowering stage.
+        Should recommend light evening irrigation / mulching.
+        """
+        threat = {
+            "event_id": "EVT-HEAT-001",
+            "event_type": "extreme_heat",
+            "severity": "high",
+            "probability": 0.85,
+            "location": "Amritsar",
+            "temp_max_c": 42.0
+        }
+
+        farmer = FarmerProfile(
+            farmer_id="F004",
+            name="Rajesh Kumar",
+            location="Amritsar",
+            crop="Tomato",
+            crop_stage="flowering",
+            soil_type="loamy",
+            current_plan=[]
+        )
+
+        result = self.agent.evaluate(threat_data=threat, farmers=[farmer])
+        assessment = result.assessments[0]
+
+        action_types = [a.action_type for a in assessment.actions]
+        self.assertIn(ActionType.HEAT_STRESS_MITIGATION, action_types)
+
+    def test_orchestrator_state_bridge(self):
+        """
+        Test direct LangGraph node execution and WeatherState mutation.
+        """
+        orchestrator_state = {
+            "location": "Jalandhar",
+            "threat_detected": True,
+            "threat": {
+                "event_id": "EVT-001",
+                "event_type": "heavy_rain",
+                "severity": "high",
+                "probability": 0.85,
+                "location": "Jalandhar",
+                "time_to_event_minutes": 30,
+                "rainfall_mm": 60
+            }
+        }
+
+        updated_state = run_strategist_node(orchestrator_state)
+
+        self.assertIn("risk_level", updated_state)
+        self.assertIn("recommended_actions", updated_state)
+        self.assertGreater(len(updated_state["recommended_actions"]), 0)
+        self.assertTrue(updated_state["alert_required"])
+        self.assertIn("strategist_output", updated_state)
+        self.assertIn("radio_gpt_payload", updated_state)
+        self.assertIn("dashboard_payload", updated_state)
+
+
+if __name__ == "__main__":
+    unittest.main()
