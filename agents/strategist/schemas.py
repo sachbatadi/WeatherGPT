@@ -122,6 +122,10 @@ class FarmActivity(BaseModel):
         default="scheduled",
         description="Status: scheduled, postponed, completed, cancelled, in_progress"
     )
+    calendar_event_id: Optional[str] = Field(
+        default=None,
+        description="Linked Google Calendar event identifier if synchronized"
+    )
 
 
 class FarmerProfile(BaseModel):
