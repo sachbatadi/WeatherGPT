@@ -30,31 +30,52 @@ def main():
     print("===================================")
 
     print("\n📍 Location:", result.get("location"))
+
     threat = result.get("threat", {})
-    print(f"⚠️ Threat: {threat.get('event_type', '').replace('_', ' ').title()} (Event ID: {threat.get('event_id')})")
-    print(f"🌧️ Precipitation: {threat.get('rainfall_mm')} mm | Wind: {threat.get('wind_speed_kmh')} km/h")
-    print(f"🚨 Overall Risk Level: {str(result.get('risk_level', '')).upper()}")
-    print(f"📞 Proactive Alert Required: {result.get('alert_required')}")
-    print(f"🔄 Re-planning Required: {result.get('replanning_required')}")
+
+    print(
+        f"⚠️ Threat: "
+        f"{threat.get('event_type', '').replace('_', ' ').title()} "
+        f"(Event ID: {threat.get('event_id')})"
+    )
+
+    print(
+        f"🌧️ Precipitation: {threat.get('rainfall_mm')} mm | "
+        f"Wind: {threat.get('wind_speed_kmh')} km/h"
+    )
+
+    print(
+        f"🚨 Overall Risk Level: "
+        f"{str(result.get('risk_level', '')).upper()}"
+    )
+
+    print(
+        f"📞 Proactive Alert Required: "
+        f"{result.get('alert_required')}"
+    )
+
+    print(
+        f"🔄 Re-planning Required: "
+        f"{result.get('replanning_required')}"
+    )
 
     print("\n👨‍🌾 Affected Farmers Assessed:")
+
     for f in result.get("affected_farmers", []):
-        print(f"   - {f.get('name')} (ID: {f.get('id')}) | Crop: {f.get('crop')} ({f.get('crop_stage')}) | Soil: {f.get('soil_type')} | Risk Score: {f.get('risk_score')}/100 [{f.get('risk_level').upper()}]")
+        print(
+            f"   - {f.get('name')} "
+            f"(ID: {f.get('id')}) | "
+            f"Crop: {f.get('crop')} "
+            f"({f.get('crop_stage')}) | "
+            f"Soil: {f.get('soil_type')} | "
+            f"Risk Score: {f.get('risk_score')}/100 "
+            f"[{f.get('risk_level').upper()}]"
+        )
 
     print("\n📋 Recommended Action Plan:")
+
     for act in result.get("recommended_actions", []):
         print(f"   - {act}")
-
-    # Display Radio-GPT Multilingual Scripts if generated
-    radio_payload = result.get("radio_gpt_payload", [])
-    if radio_payload:
-        print("\n📻 Member 4 (Radio-GPT) Voice Broadcast Scripts:")
-        for idx, item in enumerate(radio_payload, 1):
-            scripts = item.get("multilingual_scripts", {})
-            print(f"\n   [Farmer {item.get('farmer_id')}]")
-            print(f"   🇬🇧 English: {scripts.get('en')}")
-            print(f"   🇮🇳 Hindi:   {scripts.get('hi')}")
-            print(f"   🌾 Punjabi: {scripts.get('pa')}")
 
     print("\n===================================")
 

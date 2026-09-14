@@ -24,3 +24,10 @@ class WeatherState(TypedDict, total=False):
     radio_gpt_payload: List[Dict[str, Any]]
     dashboard_payload: List[Dict[str, Any]]
     strategist_assessments: List[Dict[str, Any]]
+
+    # Executor outputs
+    execution_summary: Dict[str, Any]
+    dispatched_alerts: List[Dict[str, Any]]
+    applied_plan_updates: List[Dict[str, Any]]
+    calendar_operations: List[Dict[str, Any]]
+    executor_output: Dict[str, Any]

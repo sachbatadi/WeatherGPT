@@ -1,8 +1,10 @@
 import sys
+
 from .state import WeatherState
 
 
 def _safe_print(text: str) -> None:
+    """Safe print helper for Windows console encoding."""
     try:
         print(text)
     except (UnicodeEncodeError, UnicodeError):
@@ -12,12 +14,16 @@ def _safe_print(text: str) -> None:
 
 def threat_router(state: WeatherState) -> str:
     """
-    Decide what the Orchestrator should do after Sentinel runs.
+    Routes the workflow based on Sentinel's threat detection.
+
+    Threat detected:
+        Sentinel → Strategist
+
+    No threat:
+        Sentinel → Monitor/END
     """
 
     if state.get("threat_detected", False):
-        _safe_print("\n🚨 Threat detected → Sending to Strategist")
         return "strategist"
 
-    _safe_print("\n✅ No significant threat → Continue monitoring")
     return "monitor"
