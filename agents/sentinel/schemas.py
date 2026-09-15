@@ -2,11 +2,58 @@
 Sentinel Agent Output Schemas (Member 2 Contract).
 
 Defines the structured Threat JSON output emitted by the Sentinel Agent
-after observing and verifying weather data from multiple APIs/models.
+after observing, normalizing, and verifying weather data from multiple models/APIs.
 """
 
-from typing import Optional, Dict, Any
+from enum import Enum
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
+
+
+class ThreatType(str, Enum):
+    HEAVY_RAIN = "heavy_rain"
+    HIGH_WIND = "high_wind"
+    EXTREME_HEAT = "extreme_heat"
+    FROST = "frost"
+    HAIL = "hail"
+    CYCLONE = "cyclone"
+    DROUGHT = "drought"
+    NONE = "none"
+
+
+class ThreatSeverity(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class ConfidenceLevel(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ModelForecastData(BaseModel):
+    """Normalized snapshot from an individual forecast source/model."""
+    model_name: str = Field(..., description="Name of weather model (e.g. ecmwf, gfs, icon, open-meteo)")
+    precipitation_mm: float = Field(0.0, description="Predicted 3h precipitation accumulation in mm")
+    precipitation_probability_pct: float = Field(0.0, description="Probability of rain in %")
+    max_wind_kmh: float = Field(0.0, description="Predicted maximum wind speed in km/h")
+    peak_gust_kmh: float = Field(0.0, description="Predicted peak gust in km/h")
+    max_temp_c: float = Field(25.0, description="Forecast peak temperature in °C")
+    min_temp_c: float = Field(15.0, description="Forecast minimum temperature in °C")
+    threat_flag: bool = Field(False, description="Whether this individual model breached safety thresholds")
+
+
+class MultiModelComparison(BaseModel):
+    """Synthesis of multi-source verification and model consensus."""
+    models_evaluated: List[str] = Field(default_factory=list)
+    agreement_ratio: float = Field(1.0, ge=0.0, le=1.0, description="Fraction of models in consensus")
+    rain_range_mm: Dict[str, float] = Field(default_factory=dict, description="min/max spread among models")
+    wind_range_kmh: Dict[str, float] = Field(default_factory=dict)
+    timing_agreement: bool = Field(True, description="Whether models agree on arrival hour")
+    summary: str = Field(..., description="Human-readable summary of model convergence or divergence")
 
 
 class ThreatEvent(BaseModel):
@@ -14,10 +61,10 @@ class ThreatEvent(BaseModel):
     Threat JSON contract produced by Sentinel Agent (Member 2).
     Passed as input to Strategist Agent (Member 3).
     """
-    event_id: str = Field(..., description="Unique event identifier (e.g. EVT-20260913-001)")
+    event_id: str = Field(..., description="Unique event identifier (e.g. EVT-20260915-001)")
     event_type: str = Field(
         ...,
-        description="Threat classification: heavy_rain, high_wind, extreme_heat, frost, hail, cyclone, drought"
+        description="Threat classification: heavy_rain, high_wind, extreme_heat, frost, hail, cyclone, drought, none"
     )
     severity: str = Field(
         ...,
@@ -65,3 +112,11 @@ class ThreatEvent(BaseModel):
         default_factory=dict,
         description="Additional raw metadata or source model comparison data"
     )
+
+
+class SentinelOutput(BaseModel):
+    """Complete output produced by Sentinel Agent."""
+    threat_detected: bool
+    threat: ThreatEvent
+    weather_data: Dict[str, Any] = Field(default_factory=dict)
+    comparison: Optional[MultiModelComparison] = None

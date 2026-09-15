@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 from .state import WeatherState
 from agents.strategist import run_strategist_node
+from agents.sentinel.agent import run_sentinel_node as sentinel_node_runner
 from tools.weather.weather_api import fetch_weather
 
 
@@ -342,128 +343,11 @@ def _detect_threat(
 
 def run_sentinel(state: WeatherState) -> WeatherState:
     """
-    Sentinel Agent.
-
-    WEATHER_MODE=live:
-        Fetch live weather from Open-Meteo.
-
-    WEATHER_MODE=mock:
-        Use deterministic SIH disaster scenario.
+    Executes the modular Sentinel Agent (Multi-source Weather Intelligence & Anomaly Detection).
+    Fetches multi-model weather, runs multi-hazard detection, calculates confidence,
+    and publishes ThreatEvent JSON into shared WeatherState.
     """
-
-    _safe_print("\n👁️ Sentinel Agent running...")
-
-    location = state.get("location", "Jalandhar")
-
-    weather_mode = os.getenv(
-        "WEATHER_MODE",
-        "mock",
-    ).strip().lower()
-
-    # ---------------------------------------------------------
-    # Get weather
-    # ---------------------------------------------------------
-
-    if weather_mode == "live":
-
-        _safe_print("🌐 Weather source: Open-Meteo LIVE API")
-
-        try:
-            weather = fetch_weather(location)
-
-        except Exception as exc:
-
-            _safe_print(
-                f"⚠️ Live weather API failed: {exc}"
-            )
-
-            _safe_print(
-                "🔄 Falling back to mock Sentinel scenario..."
-            )
-
-            weather = _mock_weather(location)
-
-    else:
-
-        _safe_print(
-            "🧪 Weather source: MOCK SIH DEMO"
-        )
-
-        weather = _mock_weather(location)
-
-    # Save raw weather in shared state.
-    state["weather_data"] = weather
-
-    # ---------------------------------------------------------
-    # Detect threat
-    # ---------------------------------------------------------
-
-    threat = _detect_threat(
-        weather,
-        location,
-    )
-
-    state["threat"] = threat
-
-    threat_detected = (
-        threat["event_type"] != "none"
-    )
-
-    state["threat_detected"] = threat_detected
-
-    # ---------------------------------------------------------
-    # Console output
-    # ---------------------------------------------------------
-
-    if threat_detected:
-
-        event_name = (
-            threat["event_type"]
-            .replace("_", " ")
-            .title()
-        )
-
-        _safe_print(
-            f"⚠️ Threat detected: {event_name}"
-        )
-
-        _safe_print(
-            f"📍 Location: {location}"
-        )
-
-        if threat.get("rainfall_mm") is not None:
-            _safe_print(
-                f"🌧️ Expected rainfall: "
-                f"{threat['rainfall_mm']} mm"
-            )
-
-        if threat.get("wind_speed_kmh") is not None:
-            _safe_print(
-                f"💨 Wind speed: "
-                f"{threat['wind_speed_kmh']} km/h"
-            )
-
-        if threat.get("time_to_event_minutes") is not None:
-            _safe_print(
-                f"⏱️ Expected in: "
-                f"{threat['time_to_event_minutes']} minutes"
-            )
-
-        _safe_print(
-            "\n🚨 Threat detected → Sending to Strategist"
-        )
-
-    else:
-
-        _safe_print(
-            "✅ No severe weather threat detected."
-        )
-
-        _safe_print(
-            "📡 Sentinel will continue monitoring."
-        )
-
-    return state
+    return sentinel_node_runner(state)
 
 
 def run_strategist(state: WeatherState) -> WeatherState:
