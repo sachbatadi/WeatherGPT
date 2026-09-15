@@ -77,6 +77,16 @@ def main():
     for act in result.get("recommended_actions", []):
         print(f"   - {act}")
 
+    # Executor execution summary
+    exec_summary = result.get("execution_summary", {})
+    if exec_summary:
+        print("\n⚡ Executor Actions Dispatched:")
+        print(f"   - Execution Status: {str(exec_summary.get('status', '')).upper()}")
+        print(f"   - Plan Updates Applied: {exec_summary.get('plan_updates', 0)}")
+        print(f"   - Alerts Queued (SMS + Voice): {exec_summary.get('alerts', 0)}")
+        print(f"   - Dashboard Telemetry Events: {exec_summary.get('dashboard_events', 0)}")
+        print(f"   - Failures: {exec_summary.get('failures', 0)}")
+
     print("\n===================================")
 
 
