@@ -232,6 +232,40 @@ class TestAgentSystemIntegration(unittest.TestCase):
             self.assertTrue(has_wind_action, f"Expected wind/spray action in: {actions}")
             self.assertTrue(has_water_action, f"Expected water/drainage action in: {actions}")
 
+    def test_real_sentinel_to_executor_e2e(self):
+        """
+        Scenario 5: REAL UN-MOCKED MULTI-AGENT PIPELINE
+        Executes real Sentinel → Strategist → Executor end-to-end without any patches.
+        Verifies:
+        1. Real Sentinel detects heavy rain with multi-source confidence.
+        2. Real Strategist evaluates real FarmerDB profiles and generates actions.
+        3. Real Executor applies plan updates, queues alerts, and records telemetry.
+        """
+        graph = build_graph()
+        initial_state: WeatherState = {"location": "Jalandhar"}
+        result = graph.invoke(initial_state)
+
+        # 1. Sentinel output verification
+        self.assertTrue(result.get("threat_detected"))
+        threat = result.get("threat", {})
+        self.assertEqual(threat.get("event_type"), "heavy_rain")
+        self.assertEqual(threat.get("confidence"), "high")
+        self.assertIsNotNone(threat.get("confidence_reason"))
+
+        # 2. Strategist output verification
+        self.assertIn(result.get("risk_level"), ["high", "critical"])
+        self.assertTrue(result.get("alert_required"))
+        self.assertTrue(result.get("replanning_required"))
+        self.assertGreater(len(result.get("recommended_actions", [])), 0)
+
+        # 3. Executor output verification
+        exec_summary = result.get("execution_summary", {})
+        self.assertEqual(exec_summary.get("status"), "success")
+        self.assertGreaterEqual(exec_summary.get("plan_updates", 0), 1)
+        self.assertGreaterEqual(exec_summary.get("alerts", 0), 1)
+        self.assertEqual(exec_summary.get("failures", 0), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
