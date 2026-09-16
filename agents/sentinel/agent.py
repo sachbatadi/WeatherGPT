@@ -191,11 +191,21 @@ class SentinelAgent:
         Fetch real-time weather from Open-Meteo using standard library urllib.
         Works seamlessly without requiring third-party requests library.
         """
+        try:
+            from config.settings import settings
+            geocoding_base = settings.api.geocoding_url
+            forecast_base = settings.api.forecast_url
+            timeout_sec = settings.api.api_timeout_seconds
+        except Exception:
+            geocoding_base = "https://geocoding-api.open-meteo.com/v1/search"
+            forecast_base = "https://api.open-meteo.com/v1/forecast"
+            timeout_sec = 15
+
         # 1. Geocoding
-        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(location)}&count=1&language=en&format=json"
+        geo_url = f"{geocoding_base}?name={urllib.parse.quote(location)}&count=1&language=en&format=json"
         req = urllib.request.Request(geo_url, headers={"User-Agent": "WeatherGPT-Sentinel/1.0"})
 
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
             geo_data = json.loads(resp.read().decode("utf-8"))
 
         results = geo_data.get("results", [])
@@ -217,10 +227,10 @@ class SentinelAgent:
             "forecast_hours": 12,
             "timezone": "auto"
         })
-        forecast_url = f"https://api.open-meteo.com/v1/forecast?{params}"
+        forecast_url = f"{forecast_base}?{params}"
         fc_req = urllib.request.Request(forecast_url, headers={"User-Agent": "WeatherGPT-Sentinel/1.0"})
 
-        with urllib.request.urlopen(fc_req, timeout=12) as fc_resp:
+        with urllib.request.urlopen(fc_req, timeout=timeout_sec) as fc_resp:
             raw = json.loads(fc_resp.read().decode("utf-8"))
 
         cur = raw.get("current", {})
@@ -347,7 +357,14 @@ class SentinelAgent:
         Fetches weather data, executes multi-hazard detection, verifies confidence,
         and packages the final ThreatEvent.
         """
-        exec_mode = (mode or os.getenv("WEATHER_MODE", "mock")).strip().lower()
+        if mode:
+            exec_mode = mode.strip().lower()
+        else:
+            try:
+                from config.settings import settings
+                exec_mode = settings.system.weather_mode
+            except Exception:
+                exec_mode = os.getenv("WEATHER_MODE", "mock").strip().lower()
 
         weather_data: Dict[str, Any]
 
@@ -396,7 +413,11 @@ class SentinelAgent:
         Accepts shared WeatherState and mutates it with verified Sentinel telemetry.
         """
         location = state.get("location", "Jalandhar")
-        mode = os.getenv("WEATHER_MODE", "mock")
+        try:
+            from config.settings import settings
+            mode = settings.system.weather_mode
+        except Exception:
+            mode = os.getenv("WEATHER_MODE", "mock")
 
         output = self.observe_and_detect(location=location, mode=mode)
 
