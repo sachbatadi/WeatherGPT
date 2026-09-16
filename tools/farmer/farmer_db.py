@@ -2,14 +2,19 @@
 Farmer Database Tool (tools/farmer/farmer_db.py).
 
 Provides access to farmer profiles, active farm plans, and field characteristics.
-Serves as the data store for Member 3 (Strategist) and Member 6 (Database/API).
+Implements persistent SQLite storage while preserving 100% backward-compatible
+interfaces and dictionary schemas for Sentinel, Strategist, and Executor agents.
 """
 
-from typing import List, Dict, Any, Optional
+import json
 import copy
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+
+from database.connection import get_connection, init_db, get_db_path, DEFAULT_DB_URL
 
 
-# Seed dataset of realistic farming profiles across Punjab & Haryana
+# Seed dataset of realistic farming profiles across Punjab & Haryana (for testing and manual seeding)
 INITIAL_FARMERS_DATA: List[Dict[str, Any]] = [
     {
         "farmer_id": "F001",
@@ -138,54 +143,312 @@ INITIAL_FARMERS_DATA: List[Dict[str, Any]] = [
 
 class FarmerDB:
     """
-    In-memory / persistent Farmer Database repository.
+    Persistent SQLite repository for farmer profiles and farm activities.
+    Supports in-memory test databases and local file databases.
     """
 
-    def __init__(self, initial_data: Optional[List[Dict[str, Any]]] = None):
-        source = initial_data or INITIAL_FARMERS_DATA
-        self._farmers: Dict[str, Dict[str, Any]] = {
-            f["farmer_id"]: copy.deepcopy(f) for f in source
-        }
+    def __init__(
+        self,
+        db_url: Optional[str] = None,
+        initial_data: Optional[List[Dict[str, Any]]] = None,
+        auto_seed: bool = False
+    ):
+        self.db_url = db_url or DEFAULT_DB_URL
+        self._initialized = False
+
+        # When db_url is explicitly provided (e.g. tests), initialize immediately
+        if db_url is not None:
+            self._ensure_init()
+
+        # In-memory test databases or explicit auto_seed
+        if initial_data is not None or auto_seed:
+            self._ensure_init()
+            source = initial_data if initial_data is not None else INITIAL_FARMERS_DATA
+            self._load_seed_data(source, clear_existing=False)
+
+    def _ensure_init(self) -> None:
+        """Lazily ensure tables exist without creating empty database on import."""
+        if not self._initialized:
+            init_db(self.db_url)
+            self._initialized = True
+
+    def _get_conn(self):
+        """Create and return a database connection, ensuring tables are initialized."""
+        self._ensure_init()
+        return get_connection(self.db_url)
+
+    def _load_seed_data(self, data: List[Dict[str, Any]], clear_existing: bool = False) -> None:
+        """Helper to seed farmer records and their farm activity plans."""
+        conn = self._get_conn()
+        try:
+            if clear_existing:
+                conn.execute("DELETE FROM farm_activities;")
+                conn.execute("DELETE FROM farmers;")
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+            for f in data:
+                f_id = f["farmer_id"]
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO farmers (
+                        farmer_id, name, phone, language, location,
+                        district, state, land_size_acres, crop, crop_stage,
+                        soil_type, irrigation_method, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        f_id,
+                        f.get("name", "Farmer"),
+                        f.get("phone"),
+                        f.get("language", "en"),
+                        f.get("location", "Jalandhar"),
+                        f.get("district", f.get("location")),
+                        f.get("state", "Punjab"),
+                        f.get("land_size_acres"),
+                        f.get("crop", "Wheat"),
+                        f.get("crop_stage", "Vegetative"),
+                        f.get("soil_type", "loamy"),
+                        f.get("irrigation_method", "flood"),
+                        now_iso,
+                        now_iso
+                    )
+                )
+
+                # Insert associated activities
+                for act in f.get("current_plan", []):
+                    act_id = act.get("activity_id")
+                    if not act_id:
+                        continue
+                    details_str = json.dumps(act.get("details", {}))
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO farm_activities (
+                            activity_id, farmer_id, activity_type,
+                            scheduled_date, status, calendar_event_id, details
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            act_id,
+                            f_id,
+                            act.get("activity_type", "irrigation"),
+                            act.get("scheduled_date", now_iso[:10]),
+                            act.get("status", "scheduled"),
+                            act.get("calendar_event_id"),
+                            details_str
+                        )
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _assemble_farmer_dict(self, conn, farmer_row) -> Dict[str, Any]:
+        """Convert a database row and its activities into a complete farmer dictionary."""
+        farmer = dict(farmer_row)
+        farmer_id = farmer["farmer_id"]
+
+        cur = conn.execute(
+            "SELECT * FROM farm_activities WHERE farmer_id = ? ORDER BY scheduled_date ASC;",
+            (farmer_id,)
+        )
+        plan = []
+        for act_row in cur.fetchall():
+            act = dict(act_row)
+            raw_details = act.get("details")
+            if isinstance(raw_details, str):
+                try:
+                    act["details"] = json.loads(raw_details)
+                except Exception:
+                    act["details"] = {}
+            elif not raw_details:
+                act["details"] = {}
+            plan.append(act)
+
+        farmer["current_plan"] = plan
+        return farmer
 
     def get_all_farmers(self) -> List[Dict[str, Any]]:
-        """Return deep copy of all registered farmers."""
-        return [copy.deepcopy(f) for f in self._farmers.values()]
+        """Return deep copy of all registered farmers from SQLite."""
+        conn = self._get_conn()
+        try:
+            cur = conn.execute("SELECT * FROM farmers ORDER BY farmer_id ASC;")
+            rows = cur.fetchall()
+            return [self._assemble_farmer_dict(conn, r) for r in rows]
+        finally:
+            conn.close()
 
     def get_farmer_by_id(self, farmer_id: str) -> Optional[Dict[str, Any]]:
-        """Fetch farmer profile by unique farmer ID."""
-        f = self._farmers.get(farmer_id)
-        return copy.deepcopy(f) if f else None
+        """Fetch farmer profile by unique farmer ID from SQLite."""
+        conn = self._get_conn()
+        try:
+            cur = conn.execute("SELECT * FROM farmers WHERE farmer_id = ? LIMIT 1;", (farmer_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            return self._assemble_farmer_dict(conn, row)
+        finally:
+            conn.close()
 
     def get_farmers_by_location(self, location: str) -> List[Dict[str, Any]]:
         """
         Fetch all farmers in a given location/district (case-insensitive substring match).
         """
         loc_clean = location.strip().lower()
-        matches: List[Dict[str, Any]] = []
-        for f in self._farmers.values():
-            if (
-                loc_clean in f.get("location", "").lower()
-                or loc_clean in f.get("district", "").lower()
-                or loc_clean in f.get("state", "").lower()
-            ):
-                matches.append(copy.deepcopy(f))
-        return matches
+        param = f"%{loc_clean}%"
+
+        conn = self._get_conn()
+        try:
+            cur = conn.execute(
+                """
+                SELECT * FROM farmers
+                WHERE LOWER(location) LIKE ?
+                   OR LOWER(district) LIKE ?
+                   OR LOWER(state) LIKE ?
+                ORDER BY farmer_id ASC;
+                """,
+                (param, param, param)
+            )
+            rows = cur.fetchall()
+            return [self._assemble_farmer_dict(conn, r) for r in rows]
+        finally:
+            conn.close()
 
     def update_farmer_plan(self, farmer_id: str, updated_plan: List[Dict[str, Any]]) -> bool:
-        """Update the active activity plan for a specific farmer."""
-        if farmer_id not in self._farmers:
-            return False
-        self._farmers[farmer_id]["current_plan"] = copy.deepcopy(updated_plan)
-        return True
+        """Update the active activity plan for a specific farmer in SQLite."""
+        conn = self._get_conn()
+        try:
+            cur = conn.execute("SELECT 1 FROM farmers WHERE farmer_id = ? LIMIT 1;", (farmer_id,))
+            if not cur.fetchone():
+                return False
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+            # Delete existing activities for this farmer
+            conn.execute("DELETE FROM farm_activities WHERE farmer_id = ?;", (farmer_id,))
+
+            # Insert updated activities
+            for act in updated_plan:
+                act_id = act.get("activity_id")
+                if not act_id:
+                    continue
+                details_str = json.dumps(act.get("details", {}))
+                conn.execute(
+                    """
+                    INSERT INTO farm_activities (
+                        activity_id, farmer_id, activity_type,
+                        scheduled_date, status, calendar_event_id, details
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        act_id,
+                        farmer_id,
+                        act.get("activity_type", "irrigation"),
+                        act.get("scheduled_date", now_iso[:10]),
+                        act.get("status", "scheduled"),
+                        act.get("calendar_event_id"),
+                        details_str
+                    )
+                )
+
+            # Mark farmer profile as updated
+            conn.execute(
+                "UPDATE farmers SET updated_at = ? WHERE farmer_id = ?;",
+                (now_iso, farmer_id)
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
 
     def add_farmer(self, farmer_data: Dict[str, Any]) -> str:
-        """Register a new farmer profile."""
-        f_id = farmer_data.get("farmer_id", f"F{len(self._farmers) + 1:03d}")
+        """Register a new farmer profile in SQLite."""
         data = copy.deepcopy(farmer_data)
-        data["farmer_id"] = f_id
-        self._farmers[f_id] = data
-        return f_id
+        f_id = data.get("farmer_id")
+
+        conn = self._get_conn()
+        try:
+            if not f_id:
+                cur = conn.execute("SELECT COUNT(*) FROM farmers;")
+                count = cur.fetchone()[0]
+                f_id = f"F{count + 1:03d}"
+                data["farmer_id"] = f_id
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO farmers (
+                    farmer_id, name, phone, language, location,
+                    district, state, land_size_acres, crop, crop_stage,
+                    soil_type, irrigation_method, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f_id,
+                    data.get("name", "Farmer"),
+                    data.get("phone"),
+                    data.get("language", "en"),
+                    data.get("location", "Jalandhar"),
+                    data.get("district", data.get("location")),
+                    data.get("state", "Punjab"),
+                    data.get("land_size_acres"),
+                    data.get("crop", "Wheat"),
+                    data.get("crop_stage", "Vegetative"),
+                    data.get("soil_type", "loamy"),
+                    data.get("irrigation_method", "flood"),
+                    now_iso,
+                    now_iso
+                )
+            )
+
+            for act in data.get("current_plan", []):
+                act_id = act.get("activity_id")
+                if not act_id:
+                    continue
+                details_str = json.dumps(act.get("details", {}))
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO farm_activities (
+                        activity_id, farmer_id, activity_type,
+                        scheduled_date, status, calendar_event_id, details
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        act_id,
+                        f_id,
+                        act.get("activity_type", "irrigation"),
+                        act.get("scheduled_date", now_iso[:10]),
+                        act.get("status", "scheduled"),
+                        act.get("calendar_event_id"),
+                        details_str
+                    )
+                )
+            conn.commit()
+            return f_id
+        finally:
+            conn.close()
+
+    # -----------------------------------------------------------------------
+    # Backward Compatibility Adapter for Existing Tests and Executors
+    # -----------------------------------------------------------------------
+    @property
+    def _farmers(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Dictionary mapping farmer_id to farmer dict.
+        Allows legacy code (e.g. agents/executor/agent.py: _get_db_farmer)
+        to read farmers seamlessly.
+        """
+        all_farmers = self.get_all_farmers()
+        return {f["farmer_id"]: copy.deepcopy(f) for f in all_farmers}
+
+    @_farmers.setter
+    def _farmers(self, value: Dict[str, Dict[str, Any]]) -> None:
+        """
+        Setter allowing test suites (e.g. tests/test_integration.py setUp)
+        to reset or replace test fixtures dynamically.
+        """
+        if isinstance(value, dict):
+            self._load_seed_data(list(value.values()), clear_existing=True)
+        elif isinstance(value, list):
+            self._load_seed_data(value, clear_existing=True)
 
 
-# Default singleton instance for easy import
-default_farmer_db = FarmerDB()
+# Default singleton instance (uses configured SQLite database without auto-overwriting)
+default_farmer_db = FarmerDB(auto_seed=False)
