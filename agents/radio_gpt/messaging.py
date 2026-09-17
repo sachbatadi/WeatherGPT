@@ -45,7 +45,11 @@ def send_sms(
         raise Exception(
             "VONAGE_PRIVATE_KEY_PATH is missing from .env"
         )
-
+    if not os.path.isabs(private_key_path):
+        private_key_path = os.path.join(
+            PROJECT_ROOT,
+            private_key_path
+        )
     if not os.path.isfile(private_key_path):
         raise Exception(
             f"Private key not found: {private_key_path}"
