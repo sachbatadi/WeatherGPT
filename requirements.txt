@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+vonage
+vonage-messages
+gTTS
+edge-tts
