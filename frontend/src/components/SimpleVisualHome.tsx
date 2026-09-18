@@ -74,12 +74,12 @@ export const SimpleVisualHome: React.FC<SimpleVisualHomeProps> = ({
       {/* 1. TOP OFFICIAL ALERT BANNER */}
       <div
         id="simple-danger-banner"
-        className="bg-white text-slate-900 rounded-xl p-4 sm:p-5 border-2 border-red-500 shadow-sm relative"
+        className="bg-white text-slate-900 rounded-xl p-4 sm:p-5 border-2 border-red-500/80 dark:border dark:border-rose-500/30 dark:shadow-[0_0_20px_rgba(244,63,94,0.06)] shadow-sm relative"
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="max-w-3xl">
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-bold bg-red-600 text-white tracking-wider uppercase font-mono shadow-xs">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-bold bg-red-600 dark:bg-rose-600/90 text-white tracking-wider uppercase font-mono shadow-xs">
                 <AlertTriangle className="w-3 h-3 text-white" />
                 <span>{language === 'pa' ? 'ਲਾਲ ਨਿਸ਼ਾਨ (ਹੜ੍ਹ ਚੇਤਾਵਨੀ)' : language === 'hi' ? 'रेड अलर्ट (बाढ़ चेतावनी)' : 'RED ALERT (HYDROLOGICAL)'}</span>
               </span>
@@ -178,16 +178,16 @@ export const SimpleVisualHome: React.FC<SimpleVisualHomeProps> = ({
                   {language === 'pa' ? 'ਖ਼ਤਰਾ: 14.50 m' : language === 'hi' ? 'खतरा: 14.50 m' : 'Danger: 14.50 m'}
                 </span>
               </div>
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 font-mono">
+              <span className="text-xs font-bold px-2.5 py-0.5 rounded bg-red-50 dark:bg-rose-950/40 text-red-700 dark:text-rose-300 border border-red-200 dark:border-rose-900/40 font-mono">
                 {language === 'pa' ? 'ਖ਼ਤਰੇ ਤੋਂ ਉੱਪਰ (+0.32m)' : language === 'hi' ? 'खतरे से ऊपर (+0.32m)' : 'Above Danger (+0.32m)'}
               </span>
             </div>
 
             {/* Progress bar */}
             <div className="mt-4">
-              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200">
+              <div className="w-full bg-slate-100 dark:bg-zinc-800/80 rounded-full h-3 overflow-hidden border border-slate-200 dark:border-zinc-700/50">
                 <div
-                  className="bg-red-600 h-full rounded-full transition-all duration-500"
+                  className="bg-gradient-to-r from-amber-500 via-rose-500 to-red-600 dark:from-amber-600/80 dark:via-rose-500/80 dark:to-rose-600/80 h-full rounded-full transition-all duration-500 shadow-xs"
                   style={{ width: '92%' }}
                 />
               </div>
@@ -195,7 +195,7 @@ export const SimpleVisualHome: React.FC<SimpleVisualHomeProps> = ({
               <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 font-medium">
                 <span>0m</span>
                 <span className="text-amber-600 font-semibold">{language === 'pa' ? 'ਚੇਤਾਵਨੀ 6m' : language === 'hi' ? 'चेतावनी 6m' : 'Warning 6m'}</span>
-                <span className="text-red-600 font-bold">{language === 'pa' ? 'ਖ਼ਤਰਾ 14.5m' : language === 'hi' ? 'खतरा 14.5m' : 'Danger 14.5m'}</span>
+                <span className="text-red-600 dark:text-rose-400 font-bold">{language === 'pa' ? 'ਖ਼ਤਰਾ 14.5m' : language === 'hi' ? 'खतरा 14.5m' : 'Danger 14.5m'}</span>
               </div>
             </div>
 

@@ -230,3 +230,34 @@ html.dark .recharts-text {
   fill: #a1a1aa !important;
 }
 
+/* Softer, Elegant Alert & Red Accents in Dark Mode (Eliminates harsh neon red lines) */
+html.dark #simple-danger-banner,
+html.dark .border-red-500,
+html.dark .border-red-600 {
+  border-color: rgba(244, 63, 94, 0.35) !important; /* Soft rose with gentle opacity */
+  border-width: 1px !important;
+}
+
+html.dark .border-red-200,
+html.dark .border-red-300 {
+  border-color: rgba(244, 63, 94, 0.22) !important;
+}
+
+html.dark .bg-red-50 {
+  background-color: rgba(244, 63, 94, 0.10) !important;
+}
+
+html.dark .bg-red-100 {
+  background-color: rgba(244, 63, 94, 0.16) !important;
+}
+
+html.dark .text-red-500,
+html.dark .text-red-600 {
+  color: #fb7185 !important; /* Soft pastel rose instead of glaring neon red */
+}
+
+html.dark .text-red-700 {
+  color: #fda4af !important;
+}
+
+
