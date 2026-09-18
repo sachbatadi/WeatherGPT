@@ -66,6 +66,7 @@ def init_db(db_url: Optional[str] = None) -> None:
     Initialize SQLite database tables (farmers, farm_activities, threat_event_logs, alert_logs).
     Safe and idempotent (uses CREATE TABLE IF NOT EXISTS).
     Does NOT overwrite or auto-seed existing data.
+    Ensures backwards compatibility by migrating new columns if table existed.
     """
     path = get_db_path(db_url)
 
@@ -78,6 +79,19 @@ def init_db(db_url: Optional[str] = None) -> None:
     conn = get_connection(db_url)
     try:
         conn.executescript(CREATE_TABLES_SQL)
+
+        # Migrate alert_logs columns if already existing
+        cursor = conn.execute("PRAGMA table_info(alert_logs);")
+        existing_cols = {row["name"] for row in cursor.fetchall()}
+        for col_name, col_type in [
+            ("phone", "TEXT"),
+            ("provider", "TEXT"),
+            ("provider_message_id", "TEXT"),
+            ("error_message", "TEXT")
+        ]:
+            if col_name not in existing_cols:
+                conn.execute(f"ALTER TABLE alert_logs ADD COLUMN {col_name} {col_type};")
+
         conn.commit()
     finally:
         conn.close()
@@ -137,23 +151,29 @@ def log_alert(alert_data: Dict[str, Any], db_url: Optional[str] = None) -> str:
     threat_event_id = alert_data.get("threat_event_id")
     farmer_id = str(alert_data.get("farmer_id", "UNKNOWN"))
     farmer_name = str(alert_data.get("farmer_name", "Farmer"))
+    phone = alert_data.get("phone")
     channel = str(alert_data.get("channel", "sms"))
     language = str(alert_data.get("language", "en"))
     urgency = str(alert_data.get("urgency", "high"))
     message = str(alert_data.get("message", ""))
     status = str(alert_data.get("status", "queued"))
-    dispatched_at = alert_data.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    provider = alert_data.get("provider")
+    provider_message_id = alert_data.get("provider_message_id")
+    error_message = alert_data.get("error_message")
+    dispatched_at = alert_data.get("timestamp") or alert_data.get("dispatched_at") or datetime.now(timezone.utc).isoformat()
 
     query = """
     INSERT OR REPLACE INTO alert_logs (
-        dispatch_id, threat_event_id, farmer_id, farmer_name, channel,
-        language, urgency, message, status, dispatched_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        dispatch_id, threat_event_id, farmer_id, farmer_name, phone, channel,
+        language, urgency, message, status, provider, provider_message_id,
+        error_message, dispatched_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     try:
         conn.execute(query, (
-            dispatch_id, threat_event_id, farmer_id, farmer_name, channel,
-            language, urgency, message, status, dispatched_at
+            dispatch_id, threat_event_id, farmer_id, farmer_name, phone, channel,
+            language, urgency, message, status, provider, provider_message_id,
+            error_message, dispatched_at
         ))
         conn.commit()
         return dispatch_id
@@ -206,3 +226,89 @@ def get_alert_logs(
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
+
+
+def get_alert_log_by_provider_message_id(
+    provider_message_id: str,
+    db_url: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Retrieve an alert log record by its external provider message ID."""
+    if not provider_message_id or not str(provider_message_id).strip():
+        return None
+    init_db(db_url)
+    conn = get_connection(db_url)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM alert_logs WHERE provider_message_id = ? LIMIT 1",
+            (str(provider_message_id).strip(),)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_alert_status_by_provider_id(
+    provider_message_id: str,
+    new_status: str,
+    error_message: Optional[str] = None,
+    timestamp: Optional[str] = None,
+    db_url: Optional[str] = None,
+) -> bool:
+    """
+    Update the delivery status of an alert record matched by provider_message_id.
+    Returns True if an existing record was matched and updated, False otherwise.
+    """
+    clean_id = str(provider_message_id or "").strip()
+    if not clean_id:
+        return False
+    init_db(db_url)
+    conn = get_connection(db_url)
+    ts = timestamp or datetime.now(timezone.utc).isoformat()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE alert_logs
+            SET status = ?,
+                error_message = COALESCE(?, error_message),
+                dispatched_at = ?
+            WHERE provider_message_id = ?
+            """,
+            (new_status, error_message, ts, clean_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def check_db_health(db_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Verify SQLite database connectivity and schema readiness.
+    Returns dictionary with connected status, path, and table status.
+    """
+    path = get_db_path(db_url)
+    try:
+        conn = get_connection(db_url)
+        try:
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = [row["name"] for row in cursor.fetchall()]
+            required_tables = {"farmers", "farm_activities", "threat_event_logs", "alert_logs"}
+            all_present = required_tables.issubset(set(tables))
+            return {
+                "connected": True,
+                "path": path,
+                "tables_ready": all_present,
+                "tables": tables,
+                "error": None
+            }
+        finally:
+            conn.close()
+    except Exception as exc:
+        return {
+            "connected": False,
+            "path": path,
+            "tables_ready": False,
+            "tables": [],
+            "error": str(exc)
+        }

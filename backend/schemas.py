@@ -59,6 +59,30 @@ class HealthResponse(BaseModel):
     )
 
 
+class DatabaseHealth(BaseModel):
+    """Database connectivity and schema status."""
+    connected: bool = Field(..., description="Whether database connection succeeded")
+    path: str = Field(..., description="Database path or URI")
+    tables_ready: bool = Field(..., description="Whether required tables exist")
+    error: Optional[str] = Field(None, description="Database error details if any")
+
+
+class ReadinessResponse(BaseModel):
+    """Comprehensive readiness probe response for container orchestration."""
+    status: str = Field(..., description="'ready' or 'not_ready'")
+    database: DatabaseHealth = Field(..., description="Database connection and tables health")
+    weather_mode: str = Field(..., description="Active weather ingestion mode")
+    calendar_provider: str = Field(..., description="Active calendar backend")
+    sms_enabled: bool = Field(..., description="Whether outbound SMS notifications are enabled")
+    sms_provider: str = Field(..., description="Active SMS provider name")
+    version: str = Field(default="1.0.0", description="WeatherGPT API Version")
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(),
+        description="Current server UTC timestamp"
+    )
+
+
+
 # ---------------------------------------------------------------------------
 # 2. Weather Endpoint Schemas
 # ---------------------------------------------------------------------------
@@ -216,11 +240,15 @@ class AlertLogRecord(BaseModel):
     threat_event_id: Optional[str] = None
     farmer_id: str
     farmer_name: str
+    phone: Optional[str] = None
     channel: str
     language: str
     urgency: str
     message: str
     status: str
+    provider: Optional[str] = None
+    provider_message_id: Optional[str] = None
+    error_message: Optional[str] = None
     dispatched_at: str
 
 
@@ -230,8 +258,89 @@ class AlertListResponse(BaseModel):
     alerts: List[AlertLogRecord]
 
 
+class DeliveryReceiptResponse(BaseModel):
+    """Execution receipt returned after processing an inbound SMS delivery receipt."""
+    status: str = Field(..., description="'updated', 'ignored', or 'unmatched'")
+    message_id: Optional[str] = Field(None, description="Provider message ID from callback")
+    delivery_status: Optional[str] = Field(None, description="Updated delivery status")
+    matched: bool = Field(..., description="True if alert record existed in audit database")
+    detail: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
-# 6. Error Response Schema
+# 6. Grounded conversation and monitoring schemas
+# ---------------------------------------------------------------------------
+
+VALID_LANGUAGES = {"en", "hi", "pa"}
+
+
+class ChatRequest(BaseModel):
+    """A natural-language question grounded against a selected weather result."""
+    message: str = Field(..., min_length=2, max_length=500)
+    location: str = Field(default="Jalandhar", min_length=2, max_length=100)
+    farmer_id: Optional[str] = Field(default=None, description="Optional registered farmer ID (e.g. F001)")
+    language: Optional[str] = Field(default="en", description="Preferred response language: en, hi, or pa")
+    mode: str = Field(default="mock", description="mock or live weather mode")
+    scenario: Optional[str] = Field(default=None)
+
+    if HAS_PYDANTIC:
+        @field_validator("mode")
+        @classmethod
+        def validate_chat_mode(cls, value: str) -> str:
+            normalized = value.strip().lower()
+            if normalized not in VALID_MODES:
+                raise ValueError("mode must be 'mock' or 'live'.")
+            return normalized
+
+        @field_validator("language")
+        @classmethod
+        def validate_chat_language(cls, value: Optional[str]) -> str:
+            if not value:
+                return "en"
+            normalized = value.strip().lower()
+            if normalized not in VALID_LANGUAGES:
+                raise ValueError(f"language must be one of: {sorted(VALID_LANGUAGES)}")
+            return normalized
+
+
+class ChatResponse(BaseModel):
+    intent: str
+    reply: str
+    grounding: Dict[str, Any]
+    llm_used: bool = False
+
+
+class ProviderReading(BaseModel):
+    provider: str
+    temperature_c: Optional[float] = None
+    precipitation_mm: Optional[float] = None
+    wind_speed_kmh: Optional[float] = None
+
+
+class ProviderVerification(BaseModel):
+    providers_queried: List[str]
+    provider_count: int
+    confidence: str
+    readings: List[ProviderReading]
+    failures: List[Dict[str, str]] = Field(default_factory=list)
+    note: str
+
+
+class ProviderStatusResponse(BaseModel):
+    weather: Dict[str, Any]
+    verification: ProviderVerification
+
+
+class MonitoringRunResponse(BaseModel):
+    checked_at: str
+    mode: str
+    farmers_checked: int
+    threats_detected: int
+    results: List[Dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# 7. Error Response Schema
 # ---------------------------------------------------------------------------
 
 class ErrorResponse(BaseModel):

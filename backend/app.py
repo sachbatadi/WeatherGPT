@@ -10,18 +10,32 @@ Exposes 6 REST API endpoints:
 6. GET  /api/alerts                     - Dispatched notification audit logs
 """
 
+import os
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 # Centralized Settings & Tools
 from config.settings import settings
-from database.connection import init_db, log_threat_event, log_alert, get_alert_logs
+from database.connection import (
+    init_db,
+    log_threat_event,
+    log_alert,
+    get_alert_logs,
+    get_alert_log_by_provider_message_id,
+    update_alert_status_by_provider_id,
+    check_db_health,
+)
 from tools.farmer.farmer_db import default_farmer_db
 from agents.orchestrator.graph import build_graph
 from agents.sentinel.agent import SentinelAgent
+from services.chat import build_grounded_reply
+from services.monitoring import run_monitoring_cycle
+from tools.weather.providers import WeatherProviderService
+from tools.notifications.sms import verify_vonage_signature, parse_vonage_delivery_receipt
 
 from .schemas import (
     HealthResponse,
+    ReadinessResponse,
     CurrentWeatherResponse,
     PipelineRunRequest,
     PipelineRunResponse,
@@ -30,13 +44,18 @@ from .schemas import (
     FarmerDashboardResponse,
     AlertListResponse,
     AlertLogRecord,
+    DeliveryReceiptResponse,
     ErrorResponse,
+    ChatRequest,
+    ChatResponse,
+    ProviderStatusResponse,
+    MonitoringRunResponse,
     VALID_MOCK_SCENARIOS,
     VALID_MODES,
 )
 
 # ---------------------------------------------------------------------------
-# Strict CORS Allowed Origins (Local frontend dev only - No wildcard "*")
+# Strict CORS Allowed Origins (Local dev + configured production origins)
 # ---------------------------------------------------------------------------
 ALLOWED_DEV_ORIGINS: List[str] = [
     "http://localhost:3000",       # React / Next.js dev server
@@ -46,6 +65,21 @@ ALLOWED_DEV_ORIGINS: List[str] = [
     "http://127.0.0.1:5173",
     "http://127.0.0.1:8000",
 ]
+
+
+def get_allowed_cors_origins() -> List[str]:
+    """
+    Return combined list of local development origins and any production
+    origins configured via the CORS_ORIGINS environment variable.
+    """
+    origins = list(ALLOWED_DEV_ORIGINS)
+    custom_origins = getattr(settings.system, "cors_origins", "")
+    if custom_origins:
+        for org in custom_origins.split(","):
+            org_clean = org.strip()
+            if org_clean and org_clean not in origins:
+                origins.append(org_clean)
+    return origins
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +93,25 @@ def handle_health() -> Dict[str, Any]:
         "weather_mode": settings.system.weather_mode,
         "calendar_provider": settings.system.calendar_provider,
         "default_location": settings.system.default_location,
+        "version": "1.0.0",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def handle_readiness(db_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Comprehensive readiness probe verifying SQLite database connectivity and schema readiness.
+    Used by container orchestrators (Kubernetes / Docker) and uptime monitors.
+    """
+    db_status = check_db_health(db_url)
+    is_ready = db_status["connected"] and db_status["tables_ready"]
+    return {
+        "status": "ready" if is_ready else "not_ready",
+        "database": db_status,
+        "weather_mode": settings.system.weather_mode,
+        "calendar_provider": settings.system.calendar_provider,
+        "sms_enabled": settings.sms.sms_enabled,
+        "sms_provider": settings.sms.sms_provider,
         "version": "1.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
@@ -132,7 +185,11 @@ def handle_pipeline_run(request_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Execute compiled LangGraph workflow
     graph = build_graph()
-    initial_state = {"location": location}
+    initial_state = {
+        "location": location,
+        "mode": (mode or settings.system.weather_mode).strip().lower(),
+        "mock_scenario": scenario,
+    }
     result = graph.invoke(initial_state)
 
     threat_dict = result.get("threat", {})
@@ -180,6 +237,21 @@ def handle_get_farmers(location: Optional[str] = None) -> Dict[str, Any]:
         "total_count": len(farmers),
         "farmers": farmers,
     }
+
+
+def handle_get_farmer(farmer_id: str) -> Dict[str, Any]:
+    """
+    Retrieve full farmer profile by farmer_id.
+    Raises LookupError if farmer profile does not exist.
+    """
+    clean_id = (farmer_id or "").strip()
+    if not clean_id:
+        raise ValueError("Farmer ID must not be empty.")
+
+    farmer = default_farmer_db.get_farmer_by_id(clean_id)
+    if not farmer:
+        raise LookupError(f"Farmer profile with ID '{clean_id}' not found.")
+    return farmer
 
 
 def handle_get_farmer_dashboard(farmer_id: str) -> Dict[str, Any]:
@@ -247,6 +319,129 @@ def handle_get_alerts(farmer_id: Optional[str] = None, limit: int = 50) -> Dict[
     }
 
 
+def handle_vonage_delivery_receipt(
+    payload: Dict[str, Any],
+    signature_secret: Optional[str] = None,
+    signature_method: str = "sha256",
+    db_url: Optional[str] = None,
+    allow_unsigned_when_no_secret: bool = False,
+) -> Dict[str, Any]:
+    """
+    Process an inbound Vonage Delivery Receipt (DLR) webhook callback.
+    Validates signature using Vonage's official algorithm, matches alert by message ID, and updates status safely.
+    In production, a configured signature secret is required; unsigned callbacks are rejected.
+    """
+    secret = signature_secret if signature_secret is not None else settings.credentials.vonage_signature_secret
+    method = signature_method or settings.sms.vonage_signature_method
+
+    # 1. Validate signature
+    is_valid = verify_vonage_signature(
+        params=payload,
+        signature_secret=secret,
+        method=method,
+        allow_unsigned_when_no_secret=allow_unsigned_when_no_secret,
+    )
+    if not is_valid:
+        raise PermissionError("Invalid webhook signature: callback verification failed.")
+
+
+    # 2. Parse delivery receipt payload
+    parsed = parse_vonage_delivery_receipt(payload)
+    message_id = parsed.get("message_id")
+    new_status = parsed.get("status", "unknown")
+    error_message = parsed.get("error_message")
+    timestamp = parsed.get("timestamp")
+
+    if not message_id:
+        return {
+            "status": "ignored",
+            "message_id": None,
+            "delivery_status": new_status,
+            "matched": False,
+            "detail": "Delivery receipt payload missing messageId.",
+        }
+
+    # 3. Check for existing audit record
+    existing_record = get_alert_log_by_provider_message_id(message_id, db_url=db_url)
+    if not existing_record:
+        return {
+            "status": "unmatched",
+            "message_id": message_id,
+            "delivery_status": new_status,
+            "matched": False,
+            "detail": f"No alert record found matching provider message ID '{message_id}'.",
+        }
+
+    # 4. Idempotent update: check if already in terminal state
+    current_status = str(existing_record.get("status", "")).strip().lower()
+    if current_status == new_status:
+        return {
+            "status": "ignored",
+            "message_id": message_id,
+            "delivery_status": new_status,
+            "matched": True,
+            "detail": f"Alert record is already in status '{new_status}'.",
+        }
+
+    # 5. Update SQLite audit record
+    updated = update_alert_status_by_provider_id(
+        provider_message_id=message_id,
+        new_status=new_status,
+        error_message=error_message,
+        timestamp=timestamp,
+        db_url=db_url,
+    )
+
+    return {
+        "status": "updated" if updated else "failed",
+        "message_id": message_id,
+        "delivery_status": new_status,
+        "matched": True,
+        "detail": f"Alert audit record status updated to '{new_status}'.",
+    }
+
+
+def handle_provider_weather(location: str) -> Dict[str, Any]:
+    """Fetch a normalized provider response with honest verification metadata."""
+    clean_location = (location or "").strip()
+    if len(clean_location) < 2:
+        raise ValueError("Location query parameter must be at least 2 characters.")
+    return WeatherProviderService().fetch(clean_location)
+
+
+def handle_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a grounded response from structured weather facts and farmer profile."""
+    farmer_id = payload.get("farmer_id")
+    farmer = None
+    if farmer_id and str(farmer_id).strip():
+        farmer = default_farmer_db.get_farmer_by_id(str(farmer_id).strip())
+
+    loc = payload.get("location")
+    if (not loc or loc == "Jalandhar") and farmer and farmer.get("location"):
+        loc = farmer["location"]
+
+    weather = handle_current_weather(
+        location=loc,
+        mode=payload.get("mode"),
+        scenario=payload.get("scenario"),
+    )
+    return build_grounded_reply(
+        message=payload["message"],
+        weather=weather,
+        farmer=farmer,
+        language=payload.get("language") or "en",
+    )
+
+
+def handle_monitoring_run(mode: str = "mock") -> Dict[str, Any]:
+    """Run a manual monitoring cycle; scheduling is intentionally opt-in."""
+    normalized_mode = (mode or "mock").strip().lower()
+    if normalized_mode not in VALID_MODES:
+        raise ValueError("mode must be 'mock' or 'live'.")
+    farmers = default_farmer_db.get_all_farmers()
+    return run_monitoring_cycle(farmers, handle_pipeline_run, mode=normalized_mode)
+
+
 # ---------------------------------------------------------------------------
 # FastAPI Application & Router Initialization
 # ---------------------------------------------------------------------------
@@ -277,16 +472,57 @@ def create_app() -> Any:
         redoc_url="/redoc"
     )
 
-    # 1. Strict CORS Middleware for local development addresses only
+    import logging
+    import hmac
+
+    logger = logging.getLogger("weathergpt.api")
+
+    # 1. Strict CORS Middleware for local development and configured production origins
     api_app.add_middleware(
         CORSMiddleware,
-        allow_origins=ALLOWED_DEV_ORIGINS,
+        allow_origins=get_allowed_cors_origins(),
         allow_credentials=True,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 
-    # 2. Global Error Handlers for Clean JSON Responses
+    # 2. Production API Key Authentication Middleware
+    @api_app.middleware("http")
+    async def api_key_auth_middleware(request: Request, call_next):
+        """
+        Protects sensitive endpoints (/api/farmers, /api/alerts) when API_KEY is configured in the environment.
+        Public endpoints (health, readiness, docs, webhooks) remain unauthenticated.
+        Uses constant-time string comparison to prevent timing attacks.
+        """
+        path = request.url.path
+        configured_api_key = (getattr(settings.system, "api_key", None) or os.getenv("API_KEY", "")).strip()
+
+        # Only protect farmer and alert endpoints if an API_KEY is configured
+        is_protected = (
+            path.startswith("/api/farmers") or path == "/api/alerts" or path.startswith("/api/alerts/")
+        )
+
+        if is_protected and configured_api_key:
+            # Check X-API-Key header or Authorization: Bearer <key>
+            header_key = request.headers.get("x-api-key", "").strip()
+            if not header_key:
+                auth_header = request.headers.get("authorization", "").strip()
+                if auth_header.lower().startswith("bearer "):
+                    header_key = auth_header[7:].strip()
+
+            if not header_key or not hmac.compare_digest(header_key, configured_api_key):
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={
+                        "error": "Unauthorized",
+                        "detail": "Invalid or missing API key. Provide valid credentials via X-API-Key or Authorization header.",
+                        "status_code": 401
+                    }
+                )
+
+        return await call_next(request)
+
+    # 3. Global Error Handlers for Clean JSON Responses
     @api_app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         return JSONResponse(
@@ -311,16 +547,18 @@ def create_app() -> Any:
 
     @api_app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
+        # Log full internal exception and traceback securely on server side
+        logger.error(f"Internal server error processing {request.method} {request.url.path}: {exc}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": "Internal Server Error",
-                "detail": str(exc),
+                "detail": "An internal server error occurred. Please contact the system administrator.",
                 "status_code": 500
             }
         )
 
-    # 3. Route Definitions
+    # 4. Route Definitions
     @api_app.get(
         "/api/health",
         response_model=HealthResponse,
@@ -329,6 +567,21 @@ def create_app() -> Any:
     )
     def get_health():
         return handle_health()
+
+    @api_app.get(
+        "/api/ready",
+        response_model=ReadinessResponse,
+        summary="System Readiness Probe",
+        tags=["System"]
+    )
+    def get_readiness():
+        readiness = handle_readiness()
+        if readiness["status"] != "ready":
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content=readiness
+            )
+        return readiness
 
     @api_app.get(
         "/api/weather/current",
@@ -345,8 +598,10 @@ def create_app() -> Any:
             return handle_current_weather(location=location, mode=mode, scenario=scenario)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except TimeoutError as e:
+            raise HTTPException(status_code=504, detail=f"Weather provider timed out: {str(e)}")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Weather ingestion failed: {str(e)}")
+            raise HTTPException(status_code=502, detail=f"Weather ingestion failed: {str(e)}")
 
     @api_app.post(
         "/api/pipeline/run",
@@ -359,8 +614,11 @@ def create_app() -> Any:
             return handle_pipeline_run(payload.model_dump())
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except TimeoutError as e:
+            raise HTTPException(status_code=504, detail=f"Pipeline weather provider timed out: {str(e)}")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Pipeline execution failed: {str(e)}")
+            logger.error(f"Pipeline execution failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An error occurred during pipeline execution.")
 
     @api_app.get(
         "/api/farmers",
@@ -372,6 +630,25 @@ def create_app() -> Any:
         location: Optional[str] = Query(None, description="Filter by location/district/state")
     ):
         return handle_get_farmers(location=location)
+
+    @api_app.get(
+        "/api/farmers/{farmer_id}",
+        response_model=FarmerProfileResponse,
+        summary="Get Farmer Profile by ID",
+        tags=["Farmers"]
+    )
+    def get_farmer(
+        farmer_id: str = Path(..., description="Unique farmer identifier (e.g. F001)")
+    ):
+        try:
+            return handle_get_farmer(farmer_id=farmer_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Failed to retrieve farmer profile: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An error occurred while retrieving the farmer profile.")
 
     @api_app.get(
         "/api/farmers/{farmer_id}/dashboard",
@@ -389,7 +666,8 @@ def create_app() -> Any:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(f"Failed to generate farmer dashboard: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An error occurred while generating the farmer dashboard.")
 
     @api_app.get(
         "/api/alerts",
@@ -402,6 +680,100 @@ def create_app() -> Any:
         limit: int = Query(50, ge=1, le=100, description="Max records to return")
     ):
         return handle_get_alerts(farmer_id=farmer_id, limit=limit)
+
+    @api_app.post(
+        "/api/webhooks/vonage/delivery-receipt",
+        response_model=DeliveryReceiptResponse,
+        summary="Vonage SMS Delivery Receipt (DLR) Webhook",
+        tags=["Alerts"],
+    )
+    async def vonage_delivery_receipt_webhook(request: Request):
+        """
+        Secure callback receiving Vonage SMS delivery status updates.
+        Validates cryptographic signatures when configured and safely updates audit logs.
+        """
+        # Parse payload from either JSON body or form/query params (Vonage supports both)
+        payload: Dict[str, Any] = {}
+        content_type = request.headers.get("content-type", "").lower()
+
+        if "application/json" in content_type:
+            try:
+                payload = await request.json()
+            except Exception:
+                payload = {}
+        else:
+            try:
+                form = await request.form()
+                payload = dict(form)
+            except Exception:
+                pass
+
+        # Merge with query parameters if present (Vonage GET/POST query fallback)
+        if request.query_params:
+            for k, v in request.query_params.items():
+                if k not in payload:
+                    payload[k] = v
+
+        try:
+            return handle_vonage_delivery_receipt(payload)
+        except PermissionError as exc:
+            raise HTTPException(status_code=401, detail=str(exc))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            logger.error(f"Delivery receipt processing failed: {exc}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An error occurred while processing the delivery receipt.")
+
+
+    @api_app.get(
+        "/api/weather/providers",
+        response_model=ProviderStatusResponse,
+        summary="Live provider response and verification status",
+        tags=["Weather"],
+    )
+    def get_provider_weather(location: str = Query("Jalandhar", description="Target location name")):
+        try:
+            return handle_provider_weather(location)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail=f"Weather provider timed out: {str(exc)}")
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Weather provider failed: {str(exc)}")
+
+    @api_app.post(
+        "/api/chat",
+        response_model=ChatResponse,
+        summary="Grounded farming advisory",
+        tags=["Conversation"],
+    )
+    def chat(payload: ChatRequest):
+        try:
+            return handle_chat(payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail=f"Weather provider timed out: {str(exc)}")
+        except Exception as exc:
+            logger.error(f"Chat advisory failed: {exc}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An error occurred while generating the farming advisory.")
+
+    @api_app.post(
+        "/api/monitor/run",
+        response_model=MonitoringRunResponse,
+        summary="Run one farmer monitoring cycle",
+        tags=["Monitoring"],
+    )
+    def run_monitoring(mode: str = Query("mock", description="mock or live weather mode")):
+        try:
+            return handle_monitoring_run(mode)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail=f"Weather provider timed out: {str(exc)}")
+        except Exception as exc:
+            logger.error(f"Monitoring cycle failed: {exc}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An error occurred during the monitoring cycle.")
 
     return api_app
 

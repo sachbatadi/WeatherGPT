@@ -214,9 +214,7 @@ class SentinelAgent:
             lon = float(results[0]["longitude"])
             loc_name = results[0].get("name", location)
         else:
-            lat = 31.3260
-            lon = 75.5762
-            loc_name = location
+            raise ValueError(f"Location not found: '{location}'")
 
         # 2. Forecast query
         params = urllib.parse.urlencode({
@@ -371,6 +369,8 @@ class SentinelAgent:
         if exec_mode == "live":
             try:
                 weather_data = self.fetch_live_weather(location)
+            except (ValueError, TimeoutError):
+                raise
             except Exception as e:
                 # Graceful offline fallback
                 weather_data = MOCK_SCENARIOS.get(mock_scenario or "heavy_rain", MOCK_SCENARIOS["heavy_rain"])
@@ -413,13 +413,19 @@ class SentinelAgent:
         Accepts shared WeatherState and mutates it with verified Sentinel telemetry.
         """
         location = state.get("location", "Jalandhar")
-        try:
-            from config.settings import settings
-            mode = settings.system.weather_mode
-        except Exception:
-            mode = os.getenv("WEATHER_MODE", "mock")
+        mode = state.get("mode")
+        if not mode:
+            try:
+                from config.settings import settings
+                mode = settings.system.weather_mode
+            except Exception:
+                mode = os.getenv("WEATHER_MODE", "mock")
 
-        output = self.observe_and_detect(location=location, mode=mode)
+        output = self.observe_and_detect(
+            location=location,
+            mode=mode,
+            mock_scenario=state.get("mock_scenario"),
+        )
 
         state["weather_data"] = output.weather_data
         state["threat_detected"] = output.threat_detected

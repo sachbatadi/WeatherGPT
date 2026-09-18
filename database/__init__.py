@@ -19,6 +19,9 @@ from .connection import (
     log_alert,
     get_threat_event_logs,
     get_alert_logs,
+    get_alert_log_by_provider_message_id,
+    update_alert_status_by_provider_id,
+    check_db_health,
 )
 
 __all__ = [
@@ -33,4 +36,7 @@ __all__ = [
     "log_alert",
     "get_threat_event_logs",
     "get_alert_logs",
+    "get_alert_log_by_provider_message_id",
+    "update_alert_status_by_provider_id",
+    "check_db_health",
 ]

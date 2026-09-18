@@ -11,29 +11,37 @@ DEFAULT_LONGITUDE = 75.5762
 
 
 def geocode_location(location: str) -> Dict[str, Any]:
-    response = requests.get(
-        GEOCODING_URL,
-        params={
-            "name": location,
-            "count": 1,
-            "language": "en",
-            "format": "json",
-        },
-        timeout=10,
-    )
+    clean_loc = (location or "").strip()
+    if not clean_loc:
+        raise ValueError("Location name must not be empty.")
 
-    response.raise_for_status()
+    try:
+        response = requests.get(
+            GEOCODING_URL,
+            params={
+                "name": clean_loc,
+                "count": 1,
+                "language": "en",
+                "format": "json",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.exceptions.Timeout as exc:
+        raise TimeoutError(f"Geocoding service timed out for location '{clean_loc}'.") from exc
+    except requests.exceptions.RequestException as exc:
+        raise ConnectionError(f"Geocoding network error for '{clean_loc}': {exc}") from exc
 
     data = response.json()
     results = data.get("results", [])
 
     if not results:
-        raise ValueError(f"Location not found: {location}")
+        raise ValueError(f"Location not found: '{clean_loc}'")
 
     result = results[0]
 
     return {
-        "name": result.get("name", location),
+        "name": result.get("name", clean_loc),
         "latitude": float(result["latitude"]),
         "longitude": float(result["longitude"]),
         "country": result.get("country"),
@@ -49,22 +57,9 @@ def fetch_weather(
 ) -> Dict[str, Any]:
 
     if latitude is None or longitude is None:
-        try:
-            location_info = geocode_location(location)
-            latitude = location_info["latitude"]
-            longitude = location_info["longitude"]
-        except Exception:
-            latitude = DEFAULT_LATITUDE
-            longitude = DEFAULT_LONGITUDE
-
-            location_info = {
-                "name": location,
-                "latitude": latitude,
-                "longitude": longitude,
-                "country": "India",
-                "admin1": "Punjab",
-                "timezone": "Asia/Kolkata",
-            }
+        location_info = geocode_location(location)
+        latitude = location_info["latitude"]
+        longitude = location_info["longitude"]
     else:
         location_info = {
             "name": location,
@@ -103,13 +98,17 @@ def fetch_weather(
         "timezone": "auto",
     }
 
-    response = requests.get(
-        FORECAST_URL,
-        params=params,
-        timeout=15,
-    )
-
-    response.raise_for_status()
+    try:
+        response = requests.get(
+            FORECAST_URL,
+            params=params,
+            timeout=15,
+        )
+        response.raise_for_status()
+    except requests.exceptions.Timeout as exc:
+        raise TimeoutError(f"Weather forecast service timed out for location '{location}'.") from exc
+    except requests.exceptions.RequestException as exc:
+        raise ConnectionError(f"Weather forecast request failed for '{location}': {exc}") from exc
 
     raw = response.json()
 

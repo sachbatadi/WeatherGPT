@@ -22,12 +22,18 @@ from typing import Dict, Any
 
 from backend.app import (
     ALLOWED_DEV_ORIGINS,
+    get_allowed_cors_origins,
     handle_health,
+    handle_readiness,
     handle_current_weather,
     handle_pipeline_run,
     handle_get_farmers,
+    handle_get_farmer,
     handle_get_farmer_dashboard,
     handle_get_alerts,
+    handle_provider_weather,
+    handle_chat,
+    handle_monitoring_run,
 )
 from backend.schemas import (
     PipelineRunRequest,
@@ -58,7 +64,7 @@ class TestWeatherGPTApiLayer(unittest.TestCase):
         }
 
     # -----------------------------------------------------------------------
-    # 1. Health Endpoint Tests (/api/health)
+    # 1. Health & Readiness Endpoint Tests (/api/health, /api/ready)
     # -----------------------------------------------------------------------
 
     def test_health_endpoint(self):
@@ -70,6 +76,27 @@ class TestWeatherGPTApiLayer(unittest.TestCase):
         self.assertIn("default_location", data)
         self.assertIn("timestamp", data)
         self.assertEqual(data["version"], "1.0.0")
+
+    def test_readiness_endpoint(self):
+        """Verify handle_readiness checks SQLite connectivity and required tables."""
+        data = handle_readiness()
+        self.assertIn(data["status"], ["ready", "not_ready"])
+        self.assertIn("database", data)
+        self.assertTrue(data["database"]["connected"])
+        self.assertTrue(data["database"]["tables_ready"])
+        self.assertEqual(data["version"], "1.0.0")
+
+    def test_readiness_endpoint_http(self):
+        """Verify GET /api/ready responds with 200 when database is ready."""
+        if not CLIENT_AVAILABLE or client is None:
+            self.skipTest("FastAPI TestClient not available")
+        res = client.get("/api/ready")
+        self.assertEqual(res.status_code, 200)
+        json_data = res.json()
+        self.assertEqual(json_data["status"], "ready")
+        self.assertTrue(json_data["database"]["connected"])
+        self.assertTrue(json_data["database"]["tables_ready"])
+
 
     # -----------------------------------------------------------------------
     # 2. Weather Endpoint Tests (/api/weather/current)
@@ -204,11 +231,15 @@ class TestWeatherGPTApiLayer(unittest.TestCase):
             "threat_event_id": "EVT-TEST",
             "farmer_id": "F001",
             "farmer_name": "Gurpreet Singh",
+            "phone": "+91-9876543210",
             "channel": "sms",
             "language": "pa",
             "urgency": "high",
             "message": "Urgent weather advisory: postpone irrigation.",
-            "status": "queued"
+            "status": "queued",
+            "provider": "mock",
+            "provider_message_id": "MOCK-SMS-0001",
+            "error_message": None,
         }
         log_alert(test_alert)
 
@@ -216,6 +247,10 @@ class TestWeatherGPTApiLayer(unittest.TestCase):
         self.assertGreaterEqual(result["total_count"], 1)
         dispatches = [a["dispatch_id"] for a in result["alerts"]]
         self.assertIn("TEST-DISP-API-001", dispatches)
+        alert_obj = next(a for a in result["alerts"] if a["dispatch_id"] == "TEST-DISP-API-001")
+        self.assertEqual(alert_obj.get("provider"), "mock")
+        self.assertEqual(alert_obj.get("phone"), "+91-9876543210")
+        self.assertEqual(alert_obj.get("provider_message_id"), "MOCK-SMS-0001")
 
     # -----------------------------------------------------------------------
     # 7. Strict CORS Configuration Tests
@@ -228,6 +263,178 @@ class TestWeatherGPTApiLayer(unittest.TestCase):
         self.assertIn("http://localhost:5173", ALLOWED_DEV_ORIGINS)
         self.assertIn("http://127.0.0.1:3000", ALLOWED_DEV_ORIGINS)
         self.assertIn("http://127.0.0.1:5173", ALLOWED_DEV_ORIGINS)
+
+    def test_cors_production_origins_override(self):
+        """Verify custom production origins are included when CORS_ORIGINS is set."""
+        from unittest.mock import patch
+        with patch("backend.app.settings.system.cors_origins", "https://weathergpt.example.com,https://app.example.com"):
+            origins = get_allowed_cors_origins()
+            self.assertIn("https://weathergpt.example.com", origins)
+            self.assertIn("https://app.example.com", origins)
+            self.assertNotIn("*", origins)
+
+
+    # -----------------------------------------------------------------------
+    # 8. Single Farmer Profile Endpoint Tests (/api/farmers/{farmer_id})
+    # -----------------------------------------------------------------------
+
+    def test_get_farmer_by_id_success(self):
+        """Verify GET /api/farmers/{id} returns complete farmer profile."""
+        farmer = handle_get_farmer("F001")
+        self.assertEqual(farmer["farmer_id"], "F001")
+        self.assertEqual(farmer["name"], "Gurpreet Singh")
+        self.assertIn("crop", farmer)
+        self.assertIn("soil_type", farmer)
+
+    def test_get_farmer_by_id_not_found(self):
+        """Verify non-existent farmer ID raises LookupError (404)."""
+        with self.assertRaises(LookupError):
+            handle_get_farmer("F_NONEXISTENT")
+
+    def test_get_farmer_by_id_empty(self):
+        """Verify empty farmer ID raises ValueError (400)."""
+        with self.assertRaises(ValueError):
+            handle_get_farmer("   ")
+
+    # -----------------------------------------------------------------------
+    # 9. Grounded Chat Advisory Endpoint Tests (/api/chat)
+    # -----------------------------------------------------------------------
+
+    def test_chat_with_farmer_context(self):
+        """Verify /api/chat incorporates farmer crop and soil in grounded facts."""
+        result = handle_chat({
+            "message": "Why did you postpone my irrigation?",
+            "farmer_id": "F001",
+            "mode": "mock",
+            "scenario": "heavy_rain",
+        })
+        self.assertEqual(result["intent"], "why_replan")
+        self.assertIn("Wheat", result["reply"])
+        self.assertIn("heavy_rain", result["reply"])
+        self.assertIn("farmer", result["grounding"])
+        self.assertEqual(result["grounding"]["farmer"]["name"], "Gurpreet Singh")
+
+    def test_chat_multilingual_hindi(self):
+        """Verify /api/chat responds with localized grounded guidance in Hindi."""
+        result = handle_chat({
+            "message": "Kya main spray kar sakta hoon?",
+            "location": "Jalandhar",
+            "mode": "mock",
+            "scenario": "high_wind",
+            "language": "hi",
+        })
+        self.assertEqual(result["intent"], "spraying_safety")
+        self.assertIn("छिड़काव", result["reply"])
+
+    def test_chat_multilingual_punjabi(self):
+        """Verify /api/chat responds with localized grounded guidance in Punjabi."""
+        result = handle_chat({
+            "message": "Ki main spray kar sakda haan?",
+            "location": "Bathinda",
+            "mode": "mock",
+            "scenario": "high_wind",
+            "language": "pa",
+        })
+        self.assertEqual(result["intent"], "spraying_safety")
+        self.assertIn("ਸਪਰੇਅ", result["reply"])
+
+    # -----------------------------------------------------------------------
+    # 10. Monitoring Run Endpoint Tests (/api/monitor/run)
+    # -----------------------------------------------------------------------
+
+    def test_monitoring_run_mock_cycle(self):
+        """Verify /api/monitor/run audits all farmers in the database."""
+        res = handle_monitoring_run(mode="mock")
+        self.assertIn("checked_at", res)
+        self.assertEqual(res["mode"], "mock")
+        self.assertGreaterEqual(res["farmers_checked"], 5)
+        self.assertGreaterEqual(res["threats_detected"], 1)
+
+    def test_monitoring_run_invalid_mode(self):
+        """Verify invalid monitoring mode raises ValueError."""
+        with self.assertRaises(ValueError):
+            handle_monitoring_run(mode="invalid_mode")
+
+    # -----------------------------------------------------------------------
+    # 11. FastAPI TestClient HTTP Route Verification (when client available)
+    # -----------------------------------------------------------------------
+
+    def test_fastapi_client_routes(self):
+        """Verify full HTTP request/response cycle via TestClient."""
+        if not CLIENT_AVAILABLE or client is None:
+            self.skipTest("FastAPI TestClient not available.")
+
+        # Test health endpoint
+        r = client.get("/api/health")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["status"], "healthy")
+
+        # Test single farmer endpoint
+        r = client.get("/api/farmers/F001")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["farmer_id"], "F001")
+
+        # Test non-existent farmer 404
+        r = client.get("/api/farmers/UNKNOWN_999")
+        self.assertEqual(r.status_code, 404)
+
+        # Test chat endpoint
+        r = client.post("/api/chat", json={
+            "message": "Should I irrigate today?",
+            "location": "Jalandhar",
+            "mode": "mock",
+            "scenario": "heavy_rain"
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["intent"], "irrigation")
+        self.assertFalse(r.json()["llm_used"])
+
+        # Test monitor run endpoint
+        r = client.post("/api/monitor/run?mode=mock")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["mode"], "mock")
+
+    def test_api_key_protection_middleware(self):
+        """Verify API key authentication middleware protects sensitive endpoints and keeps public ones accessible."""
+        if not CLIENT_AVAILABLE or client is None:
+            self.skipTest("FastAPI TestClient not available.")
+
+        from unittest.mock import patch
+
+        # 1. Health and ready probes are public regardless of API_KEY
+        with patch.dict("os.environ", {"API_KEY": "prod_secret_key_123"}):
+            with patch("config.settings.settings.system.api_key", "prod_secret_key_123"):
+                r_health = client.get("/api/health")
+                self.assertEqual(r_health.status_code, 200)
+
+                r_ready = client.get("/api/ready")
+                self.assertEqual(r_ready.status_code, 200)
+
+                # 2. Protected endpoints (/api/farmers, /api/alerts) reject requests without key
+                r_farmers = client.get("/api/farmers")
+                self.assertEqual(r_farmers.status_code, 401)
+                self.assertEqual(r_farmers.json()["error"], "Unauthorized")
+
+                r_farmer_id = client.get("/api/farmers/F001")
+                self.assertEqual(r_farmer_id.status_code, 401)
+
+                r_alerts = client.get("/api/alerts")
+                self.assertEqual(r_alerts.status_code, 401)
+
+                # 3. Invalid key returns 401
+                r_bad_key = client.get("/api/farmers", headers={"x-api-key": "wrong_key"})
+                self.assertEqual(r_bad_key.status_code, 401)
+
+                # 4. Valid key via X-API-Key header returns 200
+                r_good_key = client.get("/api/farmers", headers={"x-api-key": "prod_secret_key_123"})
+                self.assertEqual(r_good_key.status_code, 200)
+
+                # 5. Valid key via Authorization: Bearer <key> returns 200
+                r_bearer = client.get("/api/farmers", headers={"authorization": "Bearer prod_secret_key_123"})
+                self.assertEqual(r_bearer.status_code, 200)
+
+                r_alerts_auth = client.get("/api/alerts", headers={"x-api-key": "prod_secret_key_123"})
+                self.assertEqual(r_alerts_auth.status_code, 200)
 
 
 if __name__ == "__main__":

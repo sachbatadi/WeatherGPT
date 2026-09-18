@@ -3,6 +3,8 @@ from typing import TypedDict, List, Dict, Any
 
 class WeatherState(TypedDict, total=False):
     location: str
+    mode: str
+    mock_scenario: str
 
     weather_data: Dict[str, Any]
 

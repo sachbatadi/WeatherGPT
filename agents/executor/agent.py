@@ -708,13 +708,13 @@ def run_executor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "execution_summary": execution_summary,
         "dispatched_alerts": [
-            alert.model_dump()
+            alert.model_dump(mode="json")
             for alert in dispatched_alerts
         ],
         "applied_plan_updates": [
-            update.model_dump()
+            update.model_dump(mode="json")
             for update in applied_plan_updates
         ],
-        "executor_output": executor_output.model_dump(),
+        "executor_output": executor_output.model_dump(mode="json"),
         "alert_status": alert_status,
     }

@@ -66,6 +66,15 @@ class SystemExecutionSettings(BaseModel):
         default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"),
         description="Logging verbosity level"
     )
+    cors_origins: str = Field(
+        default_factory=lambda: os.getenv("CORS_ORIGINS", ""),
+        description="Comma-separated list of allowed CORS origins for production"
+    )
+    api_key: Optional[str] = Field(
+        default_factory=lambda: os.getenv("API_KEY"),
+        description="Optional API key required to access protected farmer and alert endpoints"
+    )
+
 
 
 class AgronomicHazardThresholds(BaseModel):
@@ -116,6 +125,25 @@ class WeatherApiSettings(BaseModel):
     supported_models: List[str] = ["ECMWF-IFS", "GFS-Global", "ICON-EU"]
 
 
+class SMSSettings(BaseModel):
+    """SMS notification runtime configuration."""
+    sms_enabled: bool = Field(
+        default_factory=lambda: os.getenv("SMS_ENABLED", "false").strip().lower() in ("true", "1", "yes"),
+        description="Global kill-switch for sending real SMS messages"
+    )
+    sms_provider: str = Field(
+        default_factory=lambda: os.getenv("SMS_PROVIDER", "mock").strip().lower(),
+        description="Active SMS provider: 'mock' or 'vonage'"
+    )
+    sms_sender_id: Optional[str] = Field(
+        default_factory=lambda: os.getenv("SMS_SENDER_ID")
+    )
+    vonage_signature_method: str = Field(
+        default_factory=lambda: os.getenv("VONAGE_SIGNATURE_METHOD", "sha256").strip().lower(),
+        description="Signature algorithm for Vonage webhooks: sha256, sha512, md5, or sha1"
+    )
+
+
 class IntegrationCredentials(BaseModel):
     """Credentials for external services loaded securely from environment."""
     google_application_credentials: Optional[str] = Field(
@@ -130,6 +158,15 @@ class IntegrationCredentials(BaseModel):
     gemini_api_key: Optional[str] = Field(
         default_factory=lambda: os.getenv("GEMINI_API_KEY")
     )
+    vonage_api_key: Optional[str] = Field(
+        default_factory=lambda: os.getenv("VONAGE_API_KEY")
+    )
+    vonage_api_secret: Optional[str] = Field(
+        default_factory=lambda: os.getenv("VONAGE_API_SECRET")
+    )
+    vonage_signature_secret: Optional[str] = Field(
+        default_factory=lambda: os.getenv("VONAGE_SIGNATURE_SECRET")
+    )
 
 
 class Settings(BaseModel):
@@ -137,6 +174,7 @@ class Settings(BaseModel):
     system: SystemExecutionSettings = Field(default_factory=SystemExecutionSettings)
     thresholds: AgronomicHazardThresholds = Field(default_factory=AgronomicHazardThresholds)
     api: WeatherApiSettings = Field(default_factory=WeatherApiSettings)
+    sms: SMSSettings = Field(default_factory=SMSSettings)
     credentials: IntegrationCredentials = Field(default_factory=IntegrationCredentials)
 
     @property
@@ -148,6 +186,11 @@ class Settings(BaseModel):
     def is_live_calendar(self) -> bool:
         """Check if system is set to live Google Calendar API."""
         return self.system.calendar_provider == "google"
+
+    @property
+    def is_sms_enabled(self) -> bool:
+        """Check if outbound SMS notifications are enabled."""
+        return self.sms.sms_enabled
 
 
 # Singleton configuration instance for project-wide import

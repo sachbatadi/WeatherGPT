@@ -52,6 +52,10 @@ class DispatchedAlert(BaseModel):
     message: str
     status: TaskStatus = TaskStatus.QUEUED
     timestamp: str
+    provider: Optional[str] = Field(default=None, description="SMS or delivery provider used (mock, vonage, etc.)")
+    provider_message_id: Optional[str] = Field(default=None, description="Message or transaction ID from provider")
+    error_message: Optional[str] = Field(default=None, description="Error explanation if delivery failed")
+
 
 
 class PlanUpdateRecord(BaseModel):

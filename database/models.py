@@ -87,11 +87,15 @@ if HAS_SQLALCHEMY:
         threat_event_id = Column(String(64), nullable=True, index=True)
         farmer_id = Column(String(64), nullable=False, index=True)
         farmer_name = Column(String(128), nullable=False)
+        phone = Column(String(32), nullable=True)
         channel = Column(String(32), nullable=False)
         language = Column(String(16), default="en", nullable=False)
         urgency = Column(String(32), default="high", nullable=False)
         message = Column(Text, nullable=False)
         status = Column(String(32), default="queued", nullable=False)
+        provider = Column(String(32), nullable=True)
+        provider_message_id = Column(String(128), nullable=True)
+        error_message = Column(Text, nullable=True)
         dispatched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -287,6 +291,10 @@ class AlertLogModel:
         channel: str,
         message: str,
         threat_event_id: Optional[str] = None,
+        phone: Optional[str] = None,
+        provider: Optional[str] = None,
+        provider_message_id: Optional[str] = None,
+        error_message: Optional[str] = None,
         language: str = "en",
         urgency: str = "high",
         status: str = "queued",
@@ -296,6 +304,10 @@ class AlertLogModel:
         self.threat_event_id = threat_event_id
         self.farmer_id = farmer_id
         self.farmer_name = farmer_name
+        self.phone = phone
+        self.provider = provider
+        self.provider_message_id = provider_message_id
+        self.error_message = error_message
         self.channel = channel
         self.language = language
         self.urgency = urgency
@@ -309,6 +321,10 @@ class AlertLogModel:
             "threat_event_id": self.threat_event_id,
             "farmer_id": self.farmer_id,
             "farmer_name": self.farmer_name,
+            "phone": self.phone,
+            "provider": self.provider,
+            "provider_message_id": self.provider_message_id,
+            "error_message": self.error_message,
             "channel": self.channel,
             "language": self.language,
             "urgency": self.urgency,
@@ -371,11 +387,15 @@ CREATE TABLE IF NOT EXISTS alert_logs (
     threat_event_id TEXT,
     farmer_id TEXT NOT NULL,
     farmer_name TEXT NOT NULL,
+    phone TEXT,
     channel TEXT NOT NULL,
     language TEXT NOT NULL DEFAULT 'en',
     urgency TEXT NOT NULL DEFAULT 'high',
     message TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'queued',
+    provider TEXT,
+    provider_message_id TEXT,
+    error_message TEXT,
     dispatched_at TEXT
 );
 
