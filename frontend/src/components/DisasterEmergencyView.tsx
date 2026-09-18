@@ -277,26 +277,26 @@ export const DisasterEmergencyView: React.FC = () => {
                   {t('deoc.showGauges', 'River Basin Hydromet Telemetry')}
                 </h3>
               </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded font-semibold">
+              <span className="text-[10px] font-mono px-2 py-0.5 bg-red-50 dark:bg-rose-950/50 text-red-700 dark:text-rose-400 border border-red-200 dark:border-rose-900/50 rounded font-semibold">
                 LIVE
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div className="p-3 bg-red-50/40 rounded-xl border border-red-200 transition-all duration-200 transform hover:scale-105 hover:-translate-y-1 hover:shadow-md hover:bg-red-50/70 cursor-pointer">
-                <span className="text-xs text-slate-600 block font-medium">Ghaggar @ Naraj Bridge</span>
-                <span className="text-2xl font-bold font-mono text-red-600 mt-0.5 block">14.82 m</span>
-                <span className="text-[10px] text-red-700 block font-semibold">Danger: 14.50 m (+0.32m)</span>
+              <div className="p-3 bg-red-50/40 dark:bg-zinc-900/80 rounded-xl border border-red-200 dark:border-rose-500/30 transition-all duration-200 transform hover:scale-105 hover:-translate-y-1 hover:shadow-md hover:bg-red-50/70 dark:hover:bg-zinc-850 cursor-pointer">
+                <span className="text-xs text-slate-600 dark:text-zinc-400 block font-medium">Ghaggar @ Naraj Bridge</span>
+                <span className="text-2xl font-bold font-mono text-red-600 dark:text-rose-400 mt-0.5 block">14.82 m</span>
+                <span className="text-[10px] text-red-700 dark:text-rose-300 block font-semibold">Danger: 14.50 m (+0.32m)</span>
               </div>
-              <div className="p-3 bg-amber-50/40 rounded-xl border border-amber-200 transition-all duration-200 transform hover:scale-105 hover:-translate-y-1 hover:shadow-md hover:bg-amber-50/70 cursor-pointer">
-                <span className="text-xs text-slate-600 block font-medium">Badi Nadi Catchment</span>
-                <span className="text-2xl font-bold font-mono text-amber-600 mt-0.5 block">6.45 m</span>
-                <span className="text-[10px] text-amber-700 block font-semibold">Warning: 6.20 m (+0.25m)</span>
+              <div className="p-3 bg-amber-50/40 dark:bg-zinc-900/80 rounded-xl border border-amber-200 dark:border-amber-500/30 transition-all duration-200 transform hover:scale-105 hover:-translate-y-1 hover:shadow-md hover:bg-amber-50/70 dark:hover:bg-zinc-850 cursor-pointer">
+                <span className="text-xs text-slate-600 dark:text-zinc-400 block font-medium">Badi Nadi Catchment</span>
+                <span className="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-0.5 block">6.45 m</span>
+                <span className="text-[10px] text-amber-700 dark:text-amber-300 block font-semibold">Warning: 6.20 m (+0.25m)</span>
               </div>
-              <div className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-200 transition-all duration-200 transform hover:scale-105 hover:-translate-y-1 hover:shadow-md hover:bg-emerald-50/70 cursor-pointer">
-                <span className="text-xs text-slate-600 block font-medium">Chhoti Nadi Siphon</span>
-                <span className="text-2xl font-bold font-mono text-emerald-700 mt-0.5 block">4.10 m</span>
-                <span className="text-[10px] text-emerald-700 block font-semibold">Normal Flow Stage</span>
+              <div className="p-3 bg-emerald-50/40 dark:bg-zinc-900/80 rounded-xl border border-emerald-200 dark:border-emerald-500/30 transition-all duration-200 transform hover:scale-105 hover:-translate-y-1 hover:shadow-md hover:bg-emerald-50/70 dark:hover:bg-zinc-850 cursor-pointer">
+                <span className="text-xs text-slate-600 dark:text-zinc-400 block font-medium">Chhoti Nadi Siphon</span>
+                <span className="text-2xl font-bold font-mono text-emerald-700 dark:text-emerald-400 mt-0.5 block">4.10 m</span>
+                <span className="text-[10px] text-emerald-700 dark:text-emerald-300 block font-semibold">Normal Flow Stage</span>
               </div>
             </div>
           </div>

@@ -220,9 +220,9 @@ export const SimpleVisualHome: React.FC<SimpleVisualHomeProps> = ({
             </div>
 
             {/* Critical Evacuation & Shelter Notice */}
-            <div className="mt-3 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 flex items-center justify-between text-xs transition-all duration-200 transform hover:scale-[1.02] hover:shadow-md cursor-pointer">
-              <div className="flex items-center gap-2 text-slate-800">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <div className="mt-3 p-2.5 rounded-xl bg-amber-50/70 dark:bg-zinc-900/80 border border-amber-200/80 dark:border-amber-500/30 flex items-center justify-between text-xs transition-all duration-200 transform hover:scale-[1.02] hover:shadow-md cursor-pointer">
+              <div className="flex items-center gap-2 text-slate-800 dark:text-zinc-200">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                 <span className="font-medium">
                   {language === 'pa'
                     ? 'ਖ਼ਤਰਾ ਖੇਤਰ: ਵਾਰਡ 12–14 • ਰਾਹਤ ਕੈਂਪ: ਸਰਕਾਰੀ ਮਹਿੰਦਰਾ ਕਾਲਜ (1.2 km)'
@@ -231,7 +231,7 @@ export const SimpleVisualHome: React.FC<SimpleVisualHomeProps> = ({
                     : 'Evacuate: Wards 12–14 • Shelter: Govt Mohindra College (1.2 km)'}
                 </span>
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-200/60 text-amber-900 font-mono shrink-0 ml-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-200/70 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 dark:border dark:border-amber-800/60 font-mono shrink-0 ml-2">
                 {language === 'pa' ? 'ਹਾਈ ਅਲਰਟ' : language === 'hi' ? 'हाई अलर्ट' : 'High Alert'}
               </span>
             </div>

@@ -240,24 +240,85 @@ html.dark .border-red-600 {
 
 html.dark .border-red-200,
 html.dark .border-red-300 {
-  border-color: rgba(244, 63, 94, 0.22) !important;
+  border-color: rgba(244, 63, 94, 0.25) !important;
 }
 
-html.dark .bg-red-50 {
-  background-color: rgba(244, 63, 94, 0.10) !important;
+/* Eliminate all washed-out milky/muddy pastel backgrounds on subcomponents */
+html.dark [class*="bg-red-50"],
+html.dark [class*="bg-rose-50"],
+html.dark [class*="bg-amber-50"],
+html.dark [class*="bg-yellow-50"],
+html.dark [class*="bg-emerald-50"],
+html.dark [class*="bg-green-50"] {
+  background-color: #18181b !important; /* Zinc-900 elevated surface */
 }
 
-html.dark .bg-red-100 {
-  background-color: rgba(244, 63, 94, 0.16) !important;
+/* Refined, modern border accents on alert subcomponents */
+html.dark [class*="border-amber-200"],
+html.dark [class*="border-amber-300"] {
+  border-color: rgba(245, 158, 11, 0.28) !important;
 }
 
+html.dark [class*="border-emerald-200"],
+html.dark [class*="border-emerald-300"] {
+  border-color: rgba(16, 185, 129, 0.28) !important;
+}
+
+html.dark [class*="border-red-200"],
+html.dark [class*="border-rose-200"] {
+  border-color: rgba(244, 63, 94, 0.28) !important;
+}
+
+/* Glowing, high-contrast dark mode typography for metrics */
 html.dark .text-red-500,
 html.dark .text-red-600 {
-  color: #fb7185 !important; /* Soft pastel rose instead of glaring neon red */
+  color: #fb7185 !important; /* Soft rose-400 */
 }
 
 html.dark .text-red-700 {
-  color: #fda4af !important;
+  color: #fda4af !important; /* Soft rose-300 */
 }
+
+html.dark .text-amber-500,
+html.dark .text-amber-600,
+html.dark .text-amber-700,
+html.dark .text-amber-800,
+html.dark .text-amber-900 {
+  color: #fbbf24 !important; /* Luminous amber-400 */
+}
+
+html.dark .text-emerald-500,
+html.dark .text-emerald-600,
+html.dark .text-emerald-700,
+html.dark .text-emerald-800 {
+  color: #34d399 !important; /* Crisp emerald-400 */
+}
+
+/* Badges & Tags in Dark Mode */
+html.dark .bg-amber-200,
+html.dark [class*="bg-amber-200"],
+html.dark .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.18) !important;
+  color: #fde68a !important;
+  border: 1px solid rgba(245, 158, 11, 0.40) !important;
+}
+
+html.dark .bg-emerald-200,
+html.dark [class*="bg-emerald-200"],
+html.dark .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.18) !important;
+  color: #a7f3d0 !important;
+  border: 1px solid rgba(16, 185, 129, 0.40) !important;
+}
+
+html.dark .bg-red-200,
+html.dark [class*="bg-red-200"],
+html.dark .bg-red-100,
+html.dark .bg-rose-100 {
+  background-color: rgba(244, 63, 94, 0.18) !important;
+  color: #fecdd3 !important;
+  border: 1px solid rgba(244, 63, 94, 0.40) !important;
+}
+
 
 
