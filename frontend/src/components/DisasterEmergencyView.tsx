@@ -28,8 +28,7 @@ export const DisasterEmergencyView: React.FC = () => {
     setActions((prev) =>
       prev.map((act) => {
         if (act.id !== id) return act;
-        const nextStatus =
-          act.status === 'In Progress' ? 'Completed' : act.status === 'Pending' ? 'In Progress' : 'Pending';
+        const nextStatus = act.status === 'Completed' ? 'Pending' : 'Completed';
         return { ...act, status: nextStatus };
       })
     );
@@ -154,23 +153,23 @@ export const DisasterEmergencyView: React.FC = () => {
                 return (
                   <div
                     key={act.id}
-                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all duration-200 transform hover:scale-[1.02] hover:shadow-md cursor-pointer ${
+                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all duration-200 transform hover:scale-[1.01] hover:shadow-md cursor-pointer ${
                       isDone
-                        ? 'bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50/80'
+                        ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-50/80 dark:hover:bg-emerald-950/30'
                         : isInProg
-                        ? 'bg-blue-50/30 border-blue-200 hover:bg-blue-50/60'
-                        : 'bg-slate-50/60 border-slate-200 hover:bg-white hover:border-slate-300'
+                        ? 'bg-blue-50/30 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/40 hover:bg-blue-50/60 dark:hover:bg-blue-950/30'
+                        : 'bg-slate-50/60 dark:bg-zinc-900/60 border-slate-200 dark:border-zinc-800 hover:bg-white dark:hover:bg-zinc-850 hover:border-slate-300 dark:hover:border-zinc-700'
                     }`}
                   >
                     <div className="flex items-start gap-2.5">
-                      <span className="font-mono text-xs font-bold text-slate-400 shrink-0 mt-0.5">
+                      <span className="font-mono text-xs font-bold text-slate-400 dark:text-zinc-500 shrink-0 mt-0.5">
                         {act.stepNumber}
                       </span>
                       <div>
-                        <p className={`text-xs font-medium ${isDone ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+                        <p className={`text-xs font-medium ${isDone ? 'text-slate-500 dark:text-zinc-500 line-through' : 'text-slate-800 dark:text-zinc-200'}`}>
                           {t('emergency.action.title.' + act.id, act.title)}
                         </p>
-                        <span className="text-[10px] text-slate-400 font-mono block">
+                        <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-mono block">
                           {t('emergency.action.deadline.' + act.id, act.deadline)}
                         </span>
                       </div>
@@ -180,10 +179,10 @@ export const DisasterEmergencyView: React.FC = () => {
                       <span
                         className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded ${
                           isDone
-                            ? 'bg-emerald-100 text-emerald-700'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/50'
                             : isInProg
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-slate-200 text-slate-700'
+                            ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/50'
+                            : 'bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-400 border border-slate-300/60 dark:border-zinc-700/60'
                         }`}
                       >
                         {isDone
@@ -196,13 +195,13 @@ export const DisasterEmergencyView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => toggleActionStatus(act.id)}
-                        className={`text-[11px] px-2 py-0.5 rounded-lg border font-medium transition-colors ${
+                        className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-colors cursor-pointer ${
                           isDone
-                            ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                            : 'bg-slate-900 border-slate-900 text-white hover:bg-slate-800'
+                            ? 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-700'
+                            : 'bg-slate-900 dark:bg-blue-600 border-slate-900 dark:border-blue-600 text-white hover:bg-slate-800 dark:hover:bg-blue-500'
                         }`}
                       >
-                        {isDone ? t('common.reopen', 'Reopen') : t('common.markExecuted', 'Mark Done')}
+                        {isDone ? t('common.reopen', 'Reopen') : t('common.markExecuted', 'Mark Executed')}
                       </button>
                     </div>
                   </div>
