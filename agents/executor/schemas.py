@@ -52,6 +52,9 @@ class DispatchedAlert(BaseModel):
     message: str
     status: TaskStatus = TaskStatus.QUEUED
     timestamp: str
+    provider: Optional[str] = None
+    provider_message_id: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 class PlanUpdateRecord(BaseModel):

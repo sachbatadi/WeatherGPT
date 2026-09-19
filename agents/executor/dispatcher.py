@@ -45,8 +45,13 @@ class AlertDispatcher:
     All operations are simulated/queued safely without invoking live telephony or carrier SMS.
     """
 
-    def __init__(self, idempotency_manager: Optional[IdempotencyManager] = None):
+    def __init__(
+        self,
+        idempotency_manager: Optional[IdempotencyManager] = None,
+        sms_provider: Optional[Any] = None,
+    ):
         self.idempotency = idempotency_manager or IdempotencyManager()
+        self.sms_provider = sms_provider
         self._dispatch_counter = 1
 
     def _next_dispatch_id(self) -> str:
@@ -63,6 +68,7 @@ class AlertDispatcher:
     ) -> Optional[DispatchedAlert]:
         """
         Create a concise, punchy SMS alert formatted in the farmer's preferred language.
+        Respects SMS_ENABLED environment flag and delegates delivery to sms_provider.
         """
         farmer_id = farmer.get("id") or farmer.get("farmer_id", "UNKNOWN")
         lang = str(farmer.get("language", "en")).lower()
@@ -83,6 +89,31 @@ class AlertDispatcher:
         else:
             msg = f"WeatherGPT Alert: {name} ji, urgent advisory for your {crop}: {action_title}. Check dashboard for details."
 
+        import os
+        from tools.notifications.sms import get_sms_provider
+        sms_enabled = os.environ.get("SMS_ENABLED", "false").strip().lower() in ("true", "1", "yes")
+        provider = self.sms_provider or get_sms_provider()
+        provider_name = getattr(provider, "name", "mock")
+
+        if not sms_enabled:
+            return DispatchedAlert(
+                dispatch_id=self._next_dispatch_id(),
+                farmer_id=farmer_id,
+                farmer_name=name,
+                phone=farmer.get("phone"),
+                channel=DispatchChannel.SMS,
+                language=lang,
+                urgency=urgency,
+                message=msg,
+                status=TaskStatus.QUEUED,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                provider=provider_name,
+                error_message="SMS delivery disabled by configuration (SMS_ENABLED=false)",
+            )
+
+        delivery_res = provider.send_sms(farmer.get("phone"), msg)
+        status = TaskStatus.SUCCESS if delivery_res.success else TaskStatus.FAILED
+
         return DispatchedAlert(
             dispatch_id=self._next_dispatch_id(),
             farmer_id=farmer_id,
@@ -92,8 +123,11 @@ class AlertDispatcher:
             language=lang,
             urgency=urgency,
             message=msg,
-            status=TaskStatus.QUEUED,
-            timestamp=datetime.now(timezone.utc).isoformat()
+            status=status,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            provider=delivery_res.provider,
+            provider_message_id=delivery_res.message_id,
+            error_message=delivery_res.error_message,
         )
 
     def queue_radio_gpt_broadcast(

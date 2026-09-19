@@ -151,26 +151,37 @@ class FarmerDB:
         self,
         db_url: Optional[str] = None,
         initial_data: Optional[List[Dict[str, Any]]] = None,
-        auto_seed: bool = False
+        auto_seed: Optional[bool] = None
     ):
         self.db_url = db_url or DEFAULT_DB_URL
         self._initialized = False
+        if auto_seed is None:
+            self.auto_seed = True if (db_url is None or initial_data is not None) else False
+        else:
+            self.auto_seed = auto_seed
 
         # When db_url is explicitly provided (e.g. tests), initialize immediately
         if db_url is not None:
             self._ensure_init()
 
         # In-memory test databases or explicit auto_seed
-        if initial_data is not None or auto_seed:
+        if initial_data is not None:
             self._ensure_init()
-            source = initial_data if initial_data is not None else INITIAL_FARMERS_DATA
-            self._load_seed_data(source, clear_existing=False)
+            self._load_seed_data(initial_data, clear_existing=False)
 
     def _ensure_init(self) -> None:
-        """Lazily ensure tables exist without creating empty database on import."""
+        """Lazily ensure tables exist and seed initial farmers if auto_seed is enabled."""
         if not self._initialized:
             init_db(self.db_url)
             self._initialized = True
+            if self.auto_seed:
+                conn = get_connection(self.db_url)
+                try:
+                    cur = conn.execute("SELECT COUNT(*) FROM farmers;")
+                    if cur.fetchone()[0] == 0:
+                        self._load_seed_data(INITIAL_FARMERS_DATA, clear_existing=False)
+                finally:
+                    conn.close()
 
     def _get_conn(self):
         """Create and return a database connection, ensuring tables are initialized."""
