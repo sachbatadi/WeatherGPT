@@ -477,12 +477,13 @@ def create_app() -> Any:
 
     logger = logging.getLogger("weathergpt.api")
 
-    # 1. Strict CORS Middleware for local development and configured production origins
+    # 1. CORS Middleware supporting local development and deployed Vercel apps
     api_app.add_middleware(
         CORSMiddleware,
         allow_origins=get_allowed_cors_origins(),
+        allow_origin_regex=r"https://.*\.vercel\.app",
         allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["*"],
         allow_headers=["*"],
     )
 

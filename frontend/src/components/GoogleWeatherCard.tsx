@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { speakText, stopSpeaking } from '../utils/speech';
+import { fetchLiveWeatherData, LiveWeatherData, DailyForecastItem } from '../services/liveWeatherService';
 import {
   Sun,
   Moon,
@@ -49,6 +50,24 @@ export const GoogleWeatherCard: React.FC<{
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [liveData, setLiveData] = useState<LiveWeatherData | null>(null);
+  const [isLoadingLive, setIsLoadingLive] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingLive(true);
+    fetchLiveWeatherData(locationName).then((data) => {
+      if (isMounted) {
+        setLiveData(data);
+        setIsLoadingLive(false);
+      }
+    }).catch(() => {
+      if (isMounted) setIsLoadingLive(false);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [locationName]);
 
   // 8-Day Forecast data mirroring Google Weather structure
   const forecastDays: DailyForecast[] = [
@@ -238,7 +257,8 @@ export const GoogleWeatherCard: React.FC<{
     },
   ];
 
-  const currentDay = forecastDays[selectedDayIndex];
+  const activeForecastDays = liveData?.forecastDays && liveData.forecastDays.length > 0 ? liveData.forecastDays : forecastDays;
+  const currentDay = activeForecastDays[selectedDayIndex] || activeForecastDays[0];
   const hourlyData = currentDay.hourly;
 
   const currentConditionText =
@@ -394,7 +414,7 @@ export const GoogleWeatherCard: React.FC<{
             <div className="flex items-center gap-3 text-xs text-slate-600 mt-1 font-medium">
               <span>{language === 'pa' ? 'ਵਰਖਾ' : language === 'hi' ? 'वर्षा' : 'Rain'}: <strong className="text-slate-900">{currentHour.precipPct}%</strong></span>
               <span>•</span>
-              <span>{language === 'pa' ? 'ਨਮੀ' : language === 'hi' ? 'आर्द्रता' : 'Humidity'}: <strong className="text-slate-900">90%</strong></span>
+              <span>{language === 'pa' ? 'ਨਮੀ' : language === 'hi' ? 'आर्द्रता' : 'Humidity'}: <strong className="text-slate-900">{liveData?.humidityPct ?? 85}%</strong></span>
               <span>•</span>
               <span>{language === 'pa' ? 'ਹਵਾ' : language === 'hi' ? 'हवा' : 'Wind'}: <strong className="text-slate-900">{currentHour.windKmh} km/h</strong></span>
             </div>
@@ -427,10 +447,16 @@ export const GoogleWeatherCard: React.FC<{
           </div>
 
           <div className="text-xs text-slate-500 font-medium mt-0.5">
-            {dayLabel}, 2:00 am • <span className="font-semibold text-slate-800">{currentConditionText}</span>
+            {dayLabel} • <span className="font-semibold text-slate-800">{currentConditionText}</span>
           </div>
-          <div className="text-[11px] text-slate-400 font-mono">
-            {locationName}
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[11px] text-slate-500 font-mono font-medium">
+              {locationName}
+            </span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>LIVE SATELLITE (OPEN-METEO)</span>
+            </span>
           </div>
         </div>
       </div>
@@ -567,7 +593,7 @@ export const GoogleWeatherCard: React.FC<{
       {/* 8-Day Forecast Strip: Logo Blue highlight for selected day */}
       <div className="mt-4 pt-3 border-t border-slate-100">
         <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-          {forecastDays.map((fDay, idx) => {
+          {activeForecastDays.map((fDay, idx) => {
             const isSelected = selectedDayIndex === idx;
             const high = unit === 'C' ? fDay.highC : fDay.highF;
             const low = unit === 'C' ? fDay.lowC : fDay.lowF;

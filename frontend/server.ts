@@ -72,7 +72,7 @@ Text:
 ${text}`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
       });
 
@@ -120,7 +120,7 @@ Input strings:
 ${JSON.stringify(missingTexts)}`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: batchPrompt,
         config: {
           responseMimeType: "application/json",
@@ -175,7 +175,43 @@ app.post(["/api/weathergpt/chat", "/api/copilot/chat"], async (req, res) => {
       const queryLower = (message || "").toLowerCase();
 
       let fallbackReply = "";
-      if (queryLower.includes("rain") || queryLower.includes("ਮੀਂਹ") || queryLower.includes("बारिश") || queryLower.includes("forecast") || queryLower.includes("ਮੌਸਮ")) {
+      const isGreeting =
+        queryLower === "hi" ||
+        queryLower === "hii" ||
+        queryLower === "hello" ||
+        queryLower === "hey" ||
+        queryLower.startsWith("hi ") ||
+        queryLower.startsWith("hello ") ||
+        queryLower.includes("sat sri akal") ||
+        queryLower.includes("ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ") ||
+        queryLower.includes("namaste") ||
+        queryLower.includes("नमस्ते");
+
+      if (isGreeting) {
+        if (language === "pa") {
+          fallbackReply = `ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ਜੀ! ਮੈਂ WeatherGPT ਹਾਂ — ਤੁਹਾਡਾ ਮੌਸਮ, ਹੜ੍ਹ ਚੇਤਾਵਨੀ ਅਤੇ ਖੇਤੀਬਾੜੀ ਸਲਾਹਕਾਰ ਏਆਈ।
+
+ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ? ਤੁਸੀਂ ਪੁੱਛ ਸਕਦੇ ਹੋ:
+• ਕੀ ਅੱਜ ਪਟਿਆਲਾ ਜਾਂ ਪੰਜਾਬ ਵਿੱਚ ਮੀਂਹ ਪਵੇਗਾ?
+• ਘੱਗਰ ਦਰਿਆ ਵਿੱਚ ਹੜ੍ਹ ਦੀ ਕੀ ਸਥਿਤੀ ਹੈ?
+• ਕੀ ਝੋਨੇ ਜਾਂ ਫਸਲਾਂ ਤੇ ਸਪਰੇਅ ਕਰਨ ਦਾ ਸਹੀ ਸਮਾਂ ਹੈ?`;
+        } else if (language === "hi") {
+          fallbackReply = `नमस्ते! मैं WeatherGPT हूँ — मौसम पूर्वानुमान, बाढ़ चेतावनी एवं कृषि परामर्श हेतु आपका संवादात्मक एआई।
+
+मैं आपकी किस प्रकार सहायता कर सकता हूँ? आप पूछ सकते हैं:
+• आज मौसम एवं वर्षा का क्या अनुमान है?
+• घग्गर बेसिन में बाढ़ की क्या स्थिति है?
+• क्या फसलों पर कीटनाशक छिड़काव करना सुरक्षित है?`;
+        } else {
+          fallbackReply = `Hello! I am WeatherGPT — your conversational AI for weather forecasting, extreme weather alerts, and PAU agricultural climate advisories.
+
+How can I assist you today? You can ask me about:
+• Today's rain, temperature, and wind forecast for your district
+• Live Ghaggar and Sutlej river water levels & flood alerts
+• Crop protection and spraying guidance from Punjab Agricultural University
+• Emergency evacuation shelters and PSDMA directives`;
+        }
+      } else if (queryLower.includes("rain") || queryLower.includes("ਮੀਂਹ") || queryLower.includes("बारिश") || queryLower.includes("forecast") || queryLower.includes("ਮੌਸਮ")) {
         if (language === "pa") {
           fallbackReply = `ਅੱਜ ਦਾ ਮੌਸਮ ਅਤੇ ਬਾਰਿਸ਼ ਪੂਰਵ-ਅਨੁਮਾਨ:
 • ਪਟਿਆਲਾ ਅਤੇ ਆਸ-ਪਾਸ ਦੇ ਇਲਾਕਿਆਂ ਵਿੱਚ 78 ਮਿ.ਮੀ. ਭਾਰੀ ਬਾਰਿਸ਼ ਦਰਜ ਕੀਤੀ ਗਈ ਹੈ।
@@ -270,7 +306,7 @@ Your role:
    ${langInstruction}`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
+      model: "gemini-2.5-flash",
       contents: message,
       config: {
         systemInstruction: systemPrompt,
