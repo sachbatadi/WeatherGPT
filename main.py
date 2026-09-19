@@ -8,6 +8,7 @@ except Exception:
     pass
 
 from agents.orchestrator.graph import build_graph
+from backend.app import app  # Expose ASGI application for web servers (uvicorn main:app)
 
 
 def main():

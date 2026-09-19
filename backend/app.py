@@ -11,8 +11,18 @@ Exposes 6 REST API endpoints:
 """
 
 import os
+import sys
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
+
+# Ensure project root is in sys.path so modules (config, agents, database, etc.) load regardless of cwd
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(_ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(_ROOT_DIR))
+_BACKEND_DIR = Path(__file__).resolve().parent
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
 
 # Centralized Settings & Tools
 from config.settings import settings
