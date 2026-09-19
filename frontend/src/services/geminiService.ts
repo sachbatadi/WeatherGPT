@@ -52,11 +52,11 @@ export async function askGeminiWeatherGPT(
         return { reply: result, source: 'gemini_direct' };
       }
     } catch (err) {
-      console.warn('[GeminiService] Direct Gemini call failed, falling back:', err);
+      console.warn('[GeminiService] Direct Gemini call failed, trying server proxy:', err);
     }
   }
 
-  // 2. Try server-side /api/weathergpt/chat endpoint (Vercel Serverless)
+  // 2. Try server-side /api/weathergpt/chat endpoint (passes apiKey to backend proxy)
   try {
     const serverRes = await fetch('/api/weathergpt/chat', {
       method: 'POST',
@@ -66,6 +66,7 @@ export async function askGeminiWeatherGPT(
         language,
         district,
         userRole,
+        apiKey: apiKey || undefined,
       }),
     });
 
@@ -74,16 +75,16 @@ export async function askGeminiWeatherGPT(
       if (data && data.reply && !data.fallback) {
         return { reply: data.reply, source: 'gemini_server' };
       }
-      if (data && data.reply && !data.reply.includes('WeatherGPT Synoptic Telemetry:')) {
+      if (data && data.reply && !data.reply.includes('WeatherGPT Synoptic Telemetry:') && !data.reply.includes('Weather facts:')) {
         return { reply: data.reply, source: 'gemini_server' };
       }
     }
   } catch (err) {
-    // Server endpoint not reachable or returned HTML (static Vercel)
+    // Server endpoint not reachable or returned error
   }
 
-  // 3. Intelligent Contextual Engine (Answers greetings and specific meteorological topics accurately)
-  const intelligentReply = generateIntelligentOfflineReply(cleanQuery, language, district);
+  // 3. Intelligent Contextual Engine (Answers greetings, wheat sowing, and specific meteorological topics accurately)
+  const intelligentReply = generateIntelligentOfflineReply(cleanQuery, language, district, Boolean(apiKey));
   return { reply: intelligentReply, source: 'offline_engine' };
 }
 
@@ -94,6 +95,9 @@ async function callGeminiDirect(
   district: string,
   userRole: string
 ): Promise<string> {
+  const cleanKey = apiKey.trim().replace(/^["']|["']$/g, '');
+  if (!cleanKey) throw new Error('Empty Gemini API key');
+
   const langPrompt =
     language === 'pa'
       ? 'Respond fluently in natural Punjabi using Gurmukhi script only. Keep it scientific, clear, and reassuring.'
@@ -107,19 +111,53 @@ User Role: ${userRole}.
 Provide accurate meteorological, hydrological, and PAU agricultural guidance.
 ${langPrompt}`;
 
-  // Try gemini-2.5-flash first, then gemini-1.5-flash
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  // Robust model hierarchy: 1.5-flash, 2.0-flash, 1.5-pro
+  const models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
 
   for (const model of models) {
+    // Attempt 1: v1beta with system_instruction
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
       const payload = {
-        systemInstruction: {
+        system_instruction: {
           parts: [{ text: systemInstruction }],
         },
         contents: [
           {
+            role: 'user',
             parts: [{ text: message }],
+          },
+        ],
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (candidate && candidate.trim()) {
+          return candidate.trim();
+        }
+      } else {
+        const errBody = await res.text();
+        console.warn(`[GeminiService] ${model} direct failed (${res.status}):`, errBody);
+      }
+    } catch (e) {
+      console.warn(`[GeminiService] ${model} direct network error:`, e);
+    }
+
+    // Attempt 2: inlined system prompt (works even if system_instruction is restricted)
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
+      const payload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `${systemInstruction}\n\nFarmer Question: ${message}` }],
           },
         ],
       };
@@ -263,6 +301,47 @@ How can I assist you today? You can ask me about:
 • Farmer Support: Kisan Call Center Toll-Free: 1800-180-1551.`;
   }
 
+  // Wheat Planting / Sowing Season Advisory (PAU Ludhiana)
+  if (
+    q.includes('wheat') ||
+    q.includes('plant') ||
+    q.includes('sow') ||
+    q.includes('sowing') ||
+    q.includes('kanak') ||
+    q.includes('gehu') ||
+    q.includes('ਕਣਕ') ||
+    q.includes('ਗੇਹੂੰ') ||
+    q.includes('गेहूं') ||
+    q.includes('ਬਿਜਾਈ') ||
+    q.includes('बुवाई')
+  ) {
+    if (language === 'pa') {
+      return `ਪੰਜਾਬ ਖੇਤੀਬਾੜੀ ਯੂਨੀਵਰਸਿਟੀ (PAU) ਕਣਕ ਦੀ ਬਿਜਾਈ ਸਲਾਹ:
+• ਬਿਜਾਈ ਦਾ ਅਨੁਕੂਲ ਸਮਾਂ: ਪੰਜਾਬ ਵਿੱਚ ਕਣਕ ਦੀ ਬਿਜਾਈ ਦਾ ਸਭ ਤੋਂ ਢੁਕਵਾਂ ਸਮਾਂ 25 ਅਕਤੂਬਰ ਤੋਂ 15 ਨਵੰਬਰ ਹੈ।
+• ਮੌਜੂਦਾ ਸਲਾਹ: ਸਤੰਬਰ ਮਹੀਨੇ ਵਿੱਚ ਕਣਕ ਦੀ ਬਿਜਾਈ ਬਿਲਕੁਲ ਨਾ ਕਰੋ। ਇਸ ਸਮੇਂ ਜ਼ਮੀਨ ਅਤੇ ਹਵਾ ਦਾ ਤਾਪਮਾਨ (>28-32°C) ਬਹੁਤ ਜ਼ਿਆਦਾ ਹੈ, ਜਿਸ ਨਾਲ ਬੀਜ ਖਰਾਬ ਹੋ ਸਕਦਾ ਹੈ ਅਤੇ ਫਸਲ ਸਮੇਂ ਤੋਂ ਪਹਿਲਾਂ ਨਿਸਰ ਸਕਦੀ ਹੈ।
+• ਖੇਤ ਦੀ ਤਿਆਰੀ: ਖੇਤ ਨੂੰ ਲੇਜ਼ਰ ਲੈਵਲਰ ਨਾਲ ਪੱਧਰਾ ਕਰੋ ਅਤੇ ਨਮੀ ਸੰਭਾਲ ਕੇ ਰੱਖੋ।
+• ਕਿਸਮਾਂ ਦੀ ਚੋਣ: ਪੀ.ਏ.ਯੂ. ਦੀਆਂ ਪ੍ਰਮਾਣਿਤ ਕਿਸਮਾਂ ਜਿਵੇਂ ਕਿ PBW 826, PBW 824, HD 3086, DBW 187 ਜਾਂ DBW 222 ਚੁਣੋ।
+• ਬੀਜ ਸੋਧ: ਬਿਜਾਈ ਤੋਂ ਪਹਿਲਾਂ ਬੀਜ ਨੂੰ ਸਿਫਾਰਸ਼ ਕੀਤੀ ਉੱਲੀਨਾਸ਼ਕ ਜਾਂ ਟ੍ਰਾਈਕੋਡਰਮਾ ਨਾਲ ਸੋਧੋ।
+• ਕਿਸਾਨ ਕਾਲ ਸੈਂਟਰ: ਟੋਲ-ਫ੍ਰੀ 1800-180-1551।`;
+    }
+    if (language === 'hi') {
+      return `पंजाब कृषि विश्वविद्यालय (PAU) गेहूं बुवाई परामर्श:
+• बुवाई का सर्वोत्तम समय: पंजाब एवं उत्तर भारत में गेहूं की बुवाई हेतु 25 अक्टूबर से 15 नवंबर की अवधि सबसे उपयुक्त है।
+• वर्तमान सलाह: सितंबर में गेहूं की बुवाई कतई न करें। इस समय उच्च तापमान (>28-32°C) के कारण अंकुरण पर प्रतिकूल असर पड़ता है और कल्ले कम निकलते हैं।
+• खेत की तैयारी: खेत को लेजर लैंड लेवलर से समतल करें तथा पर्याप्त नमी बनाए रखें।
+• उन्नत किस्में: पीएयू अनुशंसित प्रमाणित किस्में जैसे PBW 826, PBW 824, HD 3086, DBW 187 अथवा DBW 222 का उपयोग करें।
+• बीज उपचार: बुवाई से पूर्व बीज को अनुशंसित कवकनाशी या ट्राइकोडर्मा से अवश्य उपचारित करें।
+• किसान हेल्पलाइन: टोल-फ्री 1800-180-1551।`;
+    }
+    return `PAU Wheat (Kanak) Sowing & Agronomic Advisory:
+• Recommended Sowing Window: The optimal sowing period for wheat in Punjab is between October 25 and November 15.
+• Immediate Directive: Do NOT sow wheat right now in September. High soil and air temperatures (>28–32°C) cause poor germination, seedling mortality, and premature heading with weak tillers.
+• Field Preparation: Level the land using laser land levelers and conserve residual soil moisture after Kharif harvest.
+• Approved Varieties: Procure certified seeds of PAU-recommended varieties like PBW 826, PBW 824, HD 3086, DBW 187, or DBW 222.
+• Seed Treatment: Treat seeds with approved systemic fungicides (e.g. Vitavax / Trichoderma) prior to sowing.
+• Farmer Helpline: Toll-Free Kisan Call Center 1800-180-1551.`;
+  }
+
   // Temperature / Forecast / Weather general
   if (q.includes('temp') || q.includes('forecast') || q.includes('weather') || q.includes('ਮੌਸਮ') || q.includes('ਤਾਪਮਾਨ') || q.includes('मौसम') || q.includes('तापमान')) {
     if (language === 'pa') {
@@ -287,17 +366,21 @@ How can I assist you today? You can ask me about:
   }
 
   // General fallback
+  const tipText = hasKey
+    ? '(Note: Gemini API is connecting. If this fallback persists, please verify your API key at aistudio.google.com).'
+    : "(Tip: To activate unconstrained generative AI reasoning with Google Gemini, click the '🔑 Connect Gemini' button in the chat header or set GEMINI_API_KEY).";
+
   if (language === 'pa') {
     return `WeatherGPT ਮੌਸਮ ਜਾਣਕਾਰੀ:
 ਤੁਹਾਡੇ ਸੁਆਲ "${query}" ਲਈ: ਪੰਜਾਬ ਵਿੱਚ ਮੌਸਮੀ ਪ੍ਰਣਾਲੀ ਸਰਗਰਮ ਹੈ। ਘੱਗਰ ਬੇਸਿਨ ਵਿੱਚ ਪਾਣੀ ਖ਼ਤਰੇ ਦੇ ਨਿਸ਼ਾਨ 'ਤੇ ਹੈ। ਖੇਤਾਂ ਵਿੱਚ ਸਪਰੇਅ ਰੋਕੋ ਅਤੇ ਨੀਵੇਂ ਇਲਾਕਿਆਂ ਵਿੱਚ ਸਾਵਧਾਨੀ ਵਰਤੋ।
-(ਸੁਝਾਅ: ਪੂਰੀ ਜੈਨਰੇਟਿਵ ਗੱਲਬਾਤ ਲਈ ਚੈਟ ਹੈਡਰ ਵਿੱਚ '🔑 Gemini Key' ਜੋੜੋ)।`;
+${tipText}`;
   }
   if (language === 'hi') {
     return `WeatherGPT मौसम सूचना:
 आपके प्रश्न "${query}" के संदर्भ में: उत्तरी भारत में मानसूनी द्रोणी सक्रिय है। घग्गर बेसिन में सतर्कता बरती जा रही है। किसी भी विशिष्ट तापमान, वर्षा या कृषि सलाह हेतु पूछें।
-(सुझाव: लाइव जेमिनी एआई सक्रिय करने हेतु चैट हेडर में '🔑 Gemini Key' जोड़ें)।`;
+${tipText}`;
   }
   return `WeatherGPT Intelligence Summary:
 Regarding "${query}": Regional meteorological conditions across Punjab indicate elevated humidity with intermittent convective precipitation. Ghaggar hydrology remains active at 14.82m.
-(Tip: To activate unconstrained generative AI reasoning with Google Gemini, click the '🔑 Connect Gemini' button in the chat header or set GEMINI_API_KEY in your Vercel Project Settings).`;
+${tipText}`;
 }

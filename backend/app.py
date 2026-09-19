@@ -874,6 +874,57 @@ def create_app() -> Any:
         except Exception as e:
             return JSONResponse(status_code=500, content={"error": str(e)})
 
+    def call_google_gemini_api(api_key: str, message: str, language: str = "en", district: str = "Patiala, Punjab") -> Optional[str]:
+        if not api_key or str(api_key).startswith("<") or len(str(api_key).strip()) < 10:
+            return None
+        clean_key = str(api_key).strip().strip("'\"")
+
+        lang_prompt = (
+            "Respond fluently in natural Punjabi using Gurmukhi script only. Keep it scientific, clear, and authoritative." if language == "pa"
+            else ("Respond fluently in natural Hindi using Devanagari script only. Keep it scientific, clear, and authoritative." if language == "hi"
+            else "Respond in clear, professional English.")
+        )
+        system_text = (
+            f"You are WeatherGPT, the state-of-the-art conversational AI platform for weather forecasting, extreme weather alerts, and PAU agricultural climate advisories (Smart India Hackathon project).\n"
+            f"Location: {district}.\n"
+            f"Provide comprehensive, scientific answers covering current meteorological observations, river basin flood hydrology (Ghaggar & Sutlej), and crop protection/sowing guidance from Punjab Agricultural University.\n"
+            f"{lang_prompt}"
+        )
+
+        import requests
+        models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+        for model in models:
+            for version in ["v1beta", "v1"]:
+                url = f"https://generativelanguage.googleapis.com/{version}/models/{model}:generateContent?key={clean_key}"
+                payload = {
+                    "system_instruction": {"parts": [{"text": system_text}]},
+                    "contents": [{"role": "user", "parts": [{"text": message}]}],
+                }
+                try:
+                    res = requests.post(url, json=payload, timeout=10)
+                    if res.status_code == 200:
+                        data = res.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0] and parts[0]["text"].strip():
+                                return parts[0]["text"].strip()
+                    # Inlined prompt format
+                    inlined_payload = {
+                        "contents": [{"role": "user", "parts": [{"text": f"{system_text}\n\nFarmer Question: {message}"}]}]
+                    }
+                    res2 = requests.post(url, json=inlined_payload, timeout=10)
+                    if res2.status_code == 200:
+                        data = res2.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0] and parts[0]["text"].strip():
+                                return parts[0]["text"].strip()
+                except Exception:
+                    continue
+        return None
+
     @api_app.post(
         "/api/weathergpt/chat",
         summary="WeatherGPT Chat Query",
@@ -887,15 +938,30 @@ def create_app() -> Any:
         include_in_schema=False,
     )
     def copilot_chat_alias(payload: Dict[str, Any]):
-        """Alias for conversational AI chat matching frontend endpoint expectations."""
+        """Alias for conversational AI chat with Gemini generative support."""
         msg = payload.get("message", "")
         if not msg:
             return {"reply": "Welcome to WeatherGPT. Ask me anything about weather, alerts, or farming."}
+
+        api_key = payload.get("apiKey") or os.getenv("GEMINI_API_KEY") or getattr(settings.system, "gemini_api_key", None)
+        lang = payload.get("language", "en")
+        loc = payload.get("location") or payload.get("district") or "Patiala, Punjab"
+
+        if api_key and not str(api_key).startswith("<"):
+            gemini_reply = call_google_gemini_api(
+                api_key=str(api_key),
+                message=msg,
+                language=lang,
+                district=loc,
+            )
+            if gemini_reply:
+                return {"reply": gemini_reply, "source": "gemini_server"}
+
         formatted_payload = {
             "message": msg,
-            "location": payload.get("location", "Patiala"),
+            "location": loc,
             "farmer_id": payload.get("farmer_id"),
-            "language": payload.get("language", "en"),
+            "language": lang,
             "mode": payload.get("mode", "live"),
             "scenario": payload.get("scenario"),
         }
