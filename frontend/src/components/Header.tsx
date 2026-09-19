@@ -187,20 +187,6 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
 
                 <button
-                  id="tab-command-center"
-                  type="button"
-                  onClick={() => onTabChange('command')}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors ${
-                    activeTab === 'command'
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
-                  }`}
-                >
-                  <Shield className="w-3.5 h-3.5 text-blue-600" />
-                  <span>{language === 'pa' ? 'ਕਮਾਂਡ ਸੈਂਟਰ' : language === 'hi' ? 'कमांड सेंटर' : 'Command Center'}</span>
-                </button>
-
-                <button
                   id="tab-disaster-emergency"
                   type="button"
                   onClick={() => onTabChange('emergency')}
@@ -270,9 +256,9 @@ export const Header: React.FC<HeaderProps> = ({
                       : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
                   }`}
                 >
-                  <Shield className="w-3.5 h-3.5 text-blue-600" />
+                  <Home className="w-3.5 h-3.5" />
                   <span>
-                    {language === 'pa' ? 'ਕਮਾਂਡ ਸੈਂਟਰ' : language === 'hi' ? 'कमांड सेंटर' : 'Command Center'}
+                    {language === 'pa' ? 'ਮੌਸਮ ਡੈਸ਼ਬੋਰਡ' : language === 'hi' ? 'मौसम डैशबोर्ड' : 'Weather Dashboard'}
                   </span>
                 </button>
 
@@ -504,17 +490,6 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               type="button"
-              onClick={() => onTabChange('command')}
-              className={`shrink-0 min-h-9 px-3 py-2 rounded-md whitespace-nowrap flex items-center gap-1 transition-colors ${
-                activeTab === 'command' ? 'bg-slate-900 text-white font-semibold' : 'text-slate-700 bg-white'
-              }`}
-            >
-              <Shield className="w-3 h-3 text-blue-600" />
-              <span>{language === 'pa' ? 'ਕਮਾਂਡ ਸੈਂਟਰ' : language === 'hi' ? 'कमांड सेंटर' : 'Command Center'}</span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => onTabChange('emergency')}
               className={`shrink-0 min-h-9 px-3 py-2 rounded-md whitespace-nowrap transition-colors ${
                 activeTab === 'emergency' ? 'bg-slate-900 text-white font-semibold' : 'text-slate-700 bg-white'
@@ -563,8 +538,8 @@ export const Header: React.FC<HeaderProps> = ({
                 activeTab === 'command' ? 'bg-slate-900 text-white font-semibold' : 'text-slate-700 bg-white'
               }`}
             >
-              <Shield className="w-3 h-3 text-blue-600" />
-              <span>{language === 'pa' ? 'ਕਮਾਂਡ ਸੈਂਟਰ' : language === 'hi' ? 'कमांड सेंटर' : 'Command Center'}</span>
+              <Home className="w-3 h-3" />
+              <span>{language === 'pa' ? 'ਡੈਸ਼ਬੋਰਡ' : language === 'hi' ? 'डैशबोर्ड' : 'Dashboard'}</span>
             </button>
 
             <button
