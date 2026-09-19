@@ -1,0 +1,4 @@
+# Frontend Vercel Ignore
+*.py
+*.db
+!src/services/**

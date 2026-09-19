@@ -1,15 +1,20 @@
 # Vercel Ignore File
-# Ignore backend Python files, agents, and data from Vercel deployment
-main.py
-backend/
-agents/
-config/
-database/
-docs/
-models/
-services/
-tests/
-tools/
-requirements.txt
-weathergpt.db
+# Ignore root Python backend files, agents, and data from Vercel deployment
+/main.py
+/backend/
+/agents/
+/config/
+/database/
+/docs/
+/models/
+/services/
+/tests/
+/tools/
+/requirements.txt
+/render.yaml
+/weathergpt.db
 *.py
+
+# Explicitly preserve frontend TypeScript services
+!frontend/src/services/**
+!src/services/**
