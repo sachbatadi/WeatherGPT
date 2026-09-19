@@ -3,6 +3,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { speakText, stopSpeaking } from '../utils/speech';
 import { X, Send, Bot, User, Loader2, Sparkles, Volume2, VolumeX, RotateCcw } from 'lucide-react';
+import { askGeminiWeatherGPT } from '../services/geminiService';
 
 interface AgentCopilotDrawerProps {
   isOpen: boolean;
@@ -113,39 +114,29 @@ export const AgentCopilotDrawer: React.FC<AgentCopilotDrawerProps> = ({ isOpen, 
     setLoading(true);
 
     try {
-      const res = await fetch('/api/weathergpt/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: query,
-          language,
-          userRole: user?.role || 'OFFICER',
-          district: user?.district || 'Patiala, Punjab',
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const gptMsg: Message = {
-          id: `gpt-${Date.now()}`,
-          sender: 'weathergpt',
-          text: data.reply || 'Data received.',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, gptMsg]);
-      } else {
-        throw new Error('API failure');
-      }
+      const { reply } = await askGeminiWeatherGPT(
+        query,
+        language,
+        user?.district || 'Patiala, Punjab',
+        user?.role || 'OFFICER'
+      );
+      const gptMsg: Message = {
+        id: `gpt-${Date.now()}`,
+        sender: 'weathergpt',
+        text: reply,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, gptMsg]);
     } catch (err) {
       const gptMsg: Message = {
         id: `gpt-${Date.now()}`,
         sender: 'weathergpt',
         text:
           language === 'pa'
-            ? 'WeatherGPT ਜਾਣਕਾਰੀ: ਪਟਿਆਲਾ ਵਿੱਚ 78 ਮਿ.ਮੀ. ਬਾਰਿਸ਼ ਦਰਜ ਕੀਤੀ ਗਈ ਹੈ। ਘੱਗਰ ਦਰਿਆ ਦਾ ਗੇਜ 14.82 ਮੀਟਰ ਹੈ। ਨੀਵੇਂ ਇਲਾਕੇ ਖਾਲੀ ਕਰੋ।'
+            ? 'WeatherGPT ਸਿਸਟਮ ਇਸ ਵੇਲੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।'
             : language === 'hi'
-            ? 'WeatherGPT सूचना: पटियाला में 78 मिमी वर्षा दर्ज। घग्गर का जलस्तर 14.82 मीटर। निचले इलाके खाली करें।'
-            : 'WeatherGPT Telemetry: 78 mm rain recorded. Ghaggar gauge at 14.82m. Low-lying areas on evacuation alert.',
+            ? 'WeatherGPT प्रणाली वर्तमान में अनुपलब्ध है। कृपया पुनः प्रयास करें।'
+            : 'WeatherGPT system could not process the query. Please verify your connection.',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, gptMsg]);

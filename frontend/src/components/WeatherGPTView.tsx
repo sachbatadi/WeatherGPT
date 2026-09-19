@@ -19,7 +19,15 @@ import {
   RotateCcw,
   Download,
   Info,
+  Key,
+  Check,
+  X,
 } from 'lucide-react';
+import {
+  askGeminiWeatherGPT,
+  getStoredGeminiApiKey,
+  setStoredGeminiApiKey,
+} from '../services/geminiService';
 
 interface WeatherChatMessage {
   id: string;
@@ -193,6 +201,9 @@ export const WeatherGPTView: React.FC = () => {
   const [inputQuery, setInputQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(Boolean(getStoredGeminiApiKey()));
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
+  const [apiKeyInput, setApiKeyInput] = useState<string>(getStoredGeminiApiKey());
 
   const createInitialGreeting = (lang: 'en' | 'pa' | 'hi'): WeatherChatMessage => ({
     id: 'msg-init-01',
@@ -301,53 +312,25 @@ export const WeatherGPTView: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/weathergpt/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: query,
-          language,
-          userRole: user?.role || 'CITIZEN',
-          district: user?.district || 'Patiala, Punjab',
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const gptMsg: WeatherChatMessage = {
-          id: `gpt-${Date.now()}`,
-          sender: 'weathergpt',
-          text: data.reply || 'Information received.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, gptMsg]);
-      } else {
-        throw new Error('Non-200 response from WeatherGPT API');
-      }
-    } catch (err) {
-      const fallbackReply =
-        language === 'pa'
-          ? `WeatherGPT ਮੌਸਮ ਜਾਣਕਾਰੀ (ਸਥਾਨਕ ਸਿਸਟਮ):
-• ਪਟਿਆਲਾ ਜ਼ਿਲ੍ਹੇ ਵਿੱਚ 78 ਮਿ.ਮੀ. ਬਾਰਿਸ਼ ਦਰਜ ਕੀਤੀ ਗਈ ਹੈ।
-• ਘੱਗਰ ਦਰਿਆ ਦਾ ਗੇਜ 14.82 ਮੀਟਰ ਹੈ (ਖ਼ਤਰੇ ਦਾ ਨਿਸ਼ਾਨ 14.50 ਮੀਟਰ)।
-• ਅਗਲੇ 24 ਘੰਟਿਆਂ ਵਿੱਚ ਦਰਮਿਆਨਾ ਮੀਂਹ ਜਾਰੀ ਰਹੇਗਾ।
-• ਖੇਤਾਂ ਵਿੱਚ ਯੂਰੀਆ ਸਪਰੇਅ ਫਿਲਹਾਲ ਰੋਕੋ।`
-          : language === 'hi'
-          ? `WeatherGPT मौसम सूचना (स्थानीय प्रणाली):
-• पटियाला जिले में 78 मिमी वर्षा दर्ज की गई है।
-• घग्गर नदी का जलस्तर 14.82 मीटर है (खतरे का निशान 14.50 मीटर)।
-• आगामी 24 घंटों में मध्यम वर्षा जारी रहने का अनुमान है।
-• खेतों में कीटनाशक व यूरिया का छिड़काव स्थगित रखें।`
-          : `WeatherGPT Synoptic Telemetry:
-• Patiala precipitation: 78 mm recorded in last 24h.
-• Ghaggar Basin Naraj Gauge: 14.82m (Breaching 14.50m Danger Mark).
-• Intermittent convective rain expected across Shivalik foothills for next 24-36h.
-• PAU Advisory: Suspend foliar nitrogen sprays and ensure field bund drainage.`;
+      const result = await askGeminiWeatherGPT(
+        query,
+        language,
+        user?.district || 'Patiala, Punjab',
+        user?.role || 'CITIZEN'
+      );
 
       const gptMsg: WeatherChatMessage = {
         id: `gpt-${Date.now()}`,
         sender: 'weathergpt',
-        text: fallbackReply,
+        text: result.reply,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, gptMsg]);
+    } catch (err) {
+      const gptMsg: WeatherChatMessage = {
+        id: `gpt-${Date.now()}`,
+        sender: 'weathergpt',
+        text: 'WeatherGPT could not complete the query. Please verify network connectivity or Gemini configuration.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, gptMsg]);
@@ -399,18 +382,37 @@ export const WeatherGPTView: React.FC = () => {
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setMessages([createInitialGreeting(language)]);
-              stopSpeaking();
-              setSpeakingMsgId(null);
-            }}
-            className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors shrink-0"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>{language === 'pa' ? 'ਨਵੀਂ ਗੱਲਬਾਤ' : language === 'hi' ? 'नई बातचीत' : 'Clear Chat'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setApiKeyInput(getStoredGeminiApiKey());
+                setIsKeyModalOpen(true);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border ${
+                hasGeminiKey
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                  : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+              }`}
+              title="Configure Google Gemini API Key"
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>{hasGeminiKey ? 'Gemini AI Active' : 'Connect Gemini AI'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMessages([createInitialGreeting(language)]);
+                stopSpeaking();
+                setSpeakingMsgId(null);
+              }}
+              className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>{language === 'pa' ? 'ਨਵੀਂ ਗੱਲਬਾਤ' : language === 'hi' ? 'नई बातचीत' : 'Clear Chat'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -562,6 +564,83 @@ export const WeatherGPTView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Gemini API Key Configuration Modal */}
+      {isKeyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-blue-600" />
+                <h3 className="text-sm font-bold text-slate-900">Google Gemini AI Configuration</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsKeyModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-3 text-xs text-slate-600 space-y-2">
+              <p>
+                Provide your Google Gemini API key to activate unconstrained real-time reasoning with <strong>Gemini 2.5 Flash</strong>.
+              </p>
+              <p className="text-[11px] text-slate-500">
+                You can get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-medium">Google AI Studio</a>. Key is securely stored only in your local browser session.
+              </p>
+            </div>
+
+            <div className="mt-3">
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1">Gemini API Key</label>
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="AIzaSy..."
+                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              />
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setStoredGeminiApiKey('');
+                  setApiKeyInput('');
+                  setHasGeminiKey(false);
+                  setIsKeyModalOpen(false);
+                }}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Disconnect Key
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsKeyModalOpen(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStoredGeminiApiKey(apiKeyInput.trim());
+                    setHasGeminiKey(Boolean(apiKeyInput.trim()));
+                    setIsKeyModalOpen(false);
+                  }}
+                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs"
+                >
+                  Save & Connect
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
