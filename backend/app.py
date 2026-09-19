@@ -43,26 +43,48 @@ from services.monitoring import run_monitoring_cycle
 from tools.weather.providers import WeatherProviderService
 from tools.notifications.sms import verify_vonage_signature, parse_vonage_delivery_receipt
 
-from .schemas import (
-    HealthResponse,
-    ReadinessResponse,
-    CurrentWeatherResponse,
-    PipelineRunRequest,
-    PipelineRunResponse,
-    FarmerListResponse,
-    FarmerProfileResponse,
-    FarmerDashboardResponse,
-    AlertListResponse,
-    AlertLogRecord,
-    DeliveryReceiptResponse,
-    ErrorResponse,
-    ChatRequest,
-    ChatResponse,
-    ProviderStatusResponse,
-    MonitoringRunResponse,
-    VALID_MOCK_SCENARIOS,
-    VALID_MODES,
-)
+try:
+    from .schemas import (
+        HealthResponse,
+        ReadinessResponse,
+        CurrentWeatherResponse,
+        PipelineRunRequest,
+        PipelineRunResponse,
+        FarmerListResponse,
+        FarmerProfileResponse,
+        FarmerDashboardResponse,
+        AlertListResponse,
+        AlertLogRecord,
+        DeliveryReceiptResponse,
+        ErrorResponse,
+        ChatRequest,
+        ChatResponse,
+        ProviderStatusResponse,
+        MonitoringRunResponse,
+        VALID_MOCK_SCENARIOS,
+        VALID_MODES,
+    )
+except (ImportError, ValueError):
+    from schemas import (
+        HealthResponse,
+        ReadinessResponse,
+        CurrentWeatherResponse,
+        PipelineRunRequest,
+        PipelineRunResponse,
+        FarmerListResponse,
+        FarmerProfileResponse,
+        FarmerDashboardResponse,
+        AlertListResponse,
+        AlertLogRecord,
+        DeliveryReceiptResponse,
+        ErrorResponse,
+        ChatRequest,
+        ChatResponse,
+        ProviderStatusResponse,
+        MonitoringRunResponse,
+        VALID_MOCK_SCENARIOS,
+        VALID_MODES,
+    )
 
 # ---------------------------------------------------------------------------
 # Strict CORS Allowed Origins (Local dev + configured production origins)
