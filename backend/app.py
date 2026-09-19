@@ -479,9 +479,10 @@ def handle_monitoring_run(mode: str = "mock") -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 try:
-    from fastapi import FastAPI, HTTPException, Query, Path, Request, status
+    from fastapi import FastAPI, HTTPException, Query, Path, Request, status, Response
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse, FileResponse
+    from fastapi.staticfiles import StaticFiles
     from fastapi.exceptions import RequestValidationError
     HAS_FASTAPI = True
 except ImportError:
@@ -509,11 +510,11 @@ def create_app() -> Any:
 
     logger = logging.getLogger("weathergpt.api")
 
-    # 1. CORS Middleware supporting local development and deployed Vercel apps
+    # 1. CORS Middleware supporting local development, ngrok tunnels, Render, and Vercel apps
     api_app.add_middleware(
         CORSMiddleware,
         allow_origins=get_allowed_cors_origins(),
-        allow_origin_regex=r"https://.*\.vercel\.app",
+        allow_origin_regex=r"https://.*(\.vercel\.app|\.ngrok-free\.app|\.onrender\.com)",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -807,6 +808,123 @@ def create_app() -> Any:
         except Exception as exc:
             logger.error(f"Monitoring cycle failed: {exc}", exc_info=True)
             raise HTTPException(status_code=500, detail="An error occurred during the monitoring cycle.")
+
+    # ---------------------------------------------------------------------------
+    # Unified Frontend-Backend Bridge Endpoints
+    # ---------------------------------------------------------------------------
+
+    @api_app.post(
+        "/api/translate",
+        summary="Multilingual text translation",
+        tags=["I18n"],
+    )
+    async def translate_text(payload: Dict[str, Any]):
+        """Multilingual translation endpoint for frontend UI components."""
+        text = payload.get("text")
+        texts = payload.get("texts")
+        if isinstance(text, str):
+            return {"translatedText": text, "cached": True}
+        if isinstance(texts, list):
+            return {"translations": texts, "cached": True}
+        return {"error": "Provide text or texts array"}
+
+    @api_app.api_route(
+        "/api/tts",
+        methods=["GET", "POST"],
+        summary="Text-to-speech audio streaming",
+        tags=["Voice"],
+    )
+    async def tts_endpoint(request: Request):
+        """Synthesizes speech via gTTS (Punjabi) or edge-tts (Hindi/English)."""
+        try:
+            text = ""
+            lang = "pa"
+            if request.method == "POST":
+                try:
+                    body = await request.json()
+                    text = body.get("text", "")
+                    lang = body.get("lang", "pa")
+                except Exception:
+                    pass
+            else:
+                text = request.query_params.get("text", "")
+                lang = request.query_params.get("lang", "pa")
+
+            if not text or not text.strip():
+                return JSONResponse(status_code=400, content={"error": "Text is required"})
+
+            try:
+                from agents.radio_gpt.tts import generate_speech
+                lang_name = "Punjabi" if "pa" in str(lang).lower() else ("Hindi" if "hi" in str(lang).lower() else "English")
+                res = generate_speech(text=text.strip(), language=lang_name)
+                audio_file = res.get("file")
+                if audio_file and os.path.isfile(audio_file):
+                    with open(audio_file, "rb") as f:
+                        data = f.read()
+                    return Response(
+                        content=data,
+                        media_type="audio/mpeg",
+                        headers={"Cache-Control": "public, max-age=86400"},
+                    )
+            except Exception as e:
+                logger.warning(f"Server TTS error: {e}")
+
+            # Return 404 so frontend speech.ts immediately triggers native browser Web Speech API
+            return JSONResponse(status_code=404, content={"detail": "Use native browser speech fallback"})
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": str(e)})
+
+    @api_app.post(
+        "/api/weathergpt/chat",
+        summary="WeatherGPT Chat Query",
+        tags=["Conversation"],
+        include_in_schema=False,
+    )
+    @api_app.post(
+        "/api/copilot/chat",
+        summary="Copilot Chat Query",
+        tags=["Conversation"],
+        include_in_schema=False,
+    )
+    def copilot_chat_alias(payload: Dict[str, Any]):
+        """Alias for conversational AI chat matching frontend endpoint expectations."""
+        msg = payload.get("message", "")
+        if not msg:
+            return {"reply": "Welcome to WeatherGPT. Ask me anything about weather, alerts, or farming."}
+        formatted_payload = {
+            "message": msg,
+            "location": payload.get("location", "Patiala"),
+            "farmer_id": payload.get("farmer_id"),
+            "language": payload.get("language", "en"),
+            "mode": payload.get("mode", "live"),
+            "scenario": payload.get("scenario"),
+        }
+        return handle_chat(formatted_payload)
+
+    # ---------------------------------------------------------------------------
+    # Static Files & SPA Fallback Serving
+    # ---------------------------------------------------------------------------
+    candidate_dist_dirs = [
+        _ROOT_DIR / "frontend" / "dist",
+        _ROOT_DIR / "dist",
+        _BACKEND_DIR / "frontend" / "dist",
+        _BACKEND_DIR / "dist",
+    ]
+    dist_dir = next((d for d in candidate_dist_dirs if d.exists() and (d / "index.html").exists()), None)
+
+    if dist_dir:
+        assets_dir = dist_dir / "assets"
+        if assets_dir.exists():
+            api_app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        @api_app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str):
+            if full_path.startswith("api/") or full_path in ("docs", "openapi.json", "redoc"):
+                raise HTTPException(status_code=404, detail="Not Found")
+            file_path = dist_dir / full_path
+            if full_path and file_path.is_file():
+                return FileResponse(str(file_path))
+            return FileResponse(str(dist_dir / "index.html"))
 
     return api_app
 
