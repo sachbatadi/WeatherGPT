@@ -1,0 +1,13 @@
+.env
+*.key
+__pycache__/
+*.pyc
+.venv/
+.venv-local/
+venv/
+audio/
+.pytest_cache/
+node_modules/
+dist/
+build/
+*.db

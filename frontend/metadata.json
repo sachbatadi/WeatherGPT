@@ -1,0 +1,8 @@
+{
+  "name": "WeatherGPT",
+  "description": "WeatherGPT: Conversational AI for weather forecasting, alerts and climate information across Punjab and North India.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

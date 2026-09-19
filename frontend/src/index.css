@@ -1,0 +1,346 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  
+  .font-mono {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+}
+
+/* Custom leaflet marker styling */
+.custom-leaflet-marker {
+  background: transparent;
+  border: none;
+}
+
+/* ==========================================================================
+   True Pitch-Black & Neutral Charcoal Dark Mode Styles (Activated by html.dark)
+   ========================================================================== */
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Base Body, Page, and Full Container Backgrounds */
+html.dark body,
+html.dark .min-h-screen,
+html.dark main {
+  background-color: #09090b !important; /* Pitch Black (Zinc 950) */
+  color: #f4f4f5 !important;
+}
+
+/* Header, Primary Cards, Modals, Drawer Backgrounds */
+html.dark header,
+html.dark .bg-white,
+html.dark [class*="bg-white"] {
+  background-color: #121214 !important; /* Neutral Charcoal Black */
+  color: #fafafa !important;
+}
+
+/* Secondary Panels, Chat Streams, Tables, Suggestion Bar */
+html.dark .bg-slate-50,
+html.dark [class*="bg-slate-50"],
+html.dark .bg-slate-100,
+html.dark [class*="bg-slate-100"] {
+  background-color: #18181b !important; /* Zinc 900 Surface */
+  color: #e4e4e7 !important;
+}
+
+/* Neutral Non-Bluish Borders */
+html.dark .border-slate-200,
+html.dark .border-slate-100,
+html.dark .border-slate-300,
+html.dark .border-b-slate-100,
+html.dark .border-blue-200,
+html.dark [class*="border-blue-200"],
+html.dark .divide-slate-100 > *,
+html.dark .divide-slate-200 > * {
+  border-color: #27272a !important; /* Zinc 800 Border */
+}
+
+/* Typography Overrides in Dark Mode */
+html.dark .text-slate-900,
+html.dark .text-slate-950 {
+  color: #ffffff !important;
+}
+
+html.dark .text-slate-800 {
+  color: #f4f4f5 !important;
+}
+
+html.dark .text-slate-700 {
+  color: #e4e4e7 !important;
+}
+
+html.dark .text-slate-600 {
+  color: #d4d4d8 !important;
+}
+
+html.dark .text-slate-500 {
+  color: #a1a1aa !important;
+}
+
+html.dark .text-slate-400 {
+  color: #71717a !important;
+}
+
+/* Inputs, Textareas, Selects */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: #18181b !important;
+  color: #ffffff !important;
+  border-color: #27272a !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #71717a !important;
+}
+
+/* Interactive Hover States in Dark Mode */
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-slate-200:hover,
+html.dark .hover\:bg-blue-50\/80:hover,
+html.dark .hover\:bg-blue-100:hover {
+  background-color: #27272a !important;
+  color: #ffffff !important;
+}
+
+/* Popups, Dropdowns & Modals */
+html.dark .shadow-xs,
+html.dark .shadow-sm,
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl,
+html.dark .shadow-2xl {
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.85), 0 8px 12px -6px rgba(0, 0, 0, 0.85) !important;
+}
+
+/* Neutralize blue-tinted shadows in dark mode */
+html.dark [class*="shadow-\[0_2px_14px_rgba\(37"] {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Navigation Tabs in Dark Mode */
+html.dark nav button:not(.bg-blue-600):not(.bg-slate-900) {
+  color: #a1a1aa !important;
+}
+
+html.dark nav button:not(.bg-blue-600):not(.bg-slate-900):hover {
+  background-color: #27272a !important;
+  color: #ffffff !important;
+}
+
+html.dark nav button.bg-slate-900 {
+  background-color: #27272a !important;
+  color: #ffffff !important;
+  border: 1px solid #3f3f46 !important;
+}
+
+html.dark nav button#tab-weathergpt-primary:not(.bg-blue-600) {
+  background-color: #18181b !important;
+  color: #60a5fa !important;
+  border-color: #27272a !important;
+}
+
+/* Mobile navigation container */
+html.dark .md\:hidden.bg-slate-50,
+html.dark .md\:hidden {
+  background-color: #121214 !important;
+  border-color: #27272a !important;
+}
+
+/* Chat Bubbles in Dark Mode */
+html.dark .bg-slate-900 {
+  background-color: #222226 !important;
+}
+
+html.dark .bg-slate-900.text-white {
+  background-color: #222226 !important;
+  border-color: #3f3f46 !important;
+}
+
+html.dark button.bg-slate-900 {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+html.dark button.bg-slate-900:hover {
+  background-color: #1d4ed8 !important;
+}
+
+/* Weather suggestion query chips */
+html.dark .overflow-x-auto button,
+html.dark .bg-slate-50 button {
+  background-color: #18181b !important;
+  border-color: #27272a !important;
+  color: #e4e4e7 !important;
+}
+
+html.dark .overflow-x-auto button:hover,
+html.dark .bg-slate-50 button:hover {
+  background-color: #27272a !important;
+  border-color: #3b82f6 !important;
+  color: #60a5fa !important;
+}
+
+/* Leaflet Map Controls & Popups in Dark Mode */
+html.dark .leaflet-container {
+  background-color: #121214 !important;
+}
+
+html.dark .leaflet-popup-content-wrapper,
+html.dark .leaflet-popup-tip {
+  background-color: #18181b !important;
+  color: #f4f4f5 !important;
+  border: 1px solid #27272a !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9) !important;
+}
+
+html.dark .leaflet-popup-content * {
+  color: #f4f4f5 !important;
+}
+
+html.dark .leaflet-bar a {
+  background-color: #18181b !important;
+  color: #f4f4f5 !important;
+  border-color: #27272a !important;
+}
+
+html.dark .leaflet-bar a:hover {
+  background-color: #27272a !important;
+}
+
+/* Weather chart SVG labels in Dark Mode */
+html.dark svg text.fill-slate-800 {
+  fill: #f4f4f5 !important;
+}
+
+html.dark svg text.fill-slate-500 {
+  fill: #a1a1aa !important;
+}
+
+html.dark .recharts-cartesian-axis-tick text,
+html.dark .recharts-text {
+  fill: #a1a1aa !important;
+}
+
+/* Softer, Elegant Alert & Red Accents in Dark Mode (Eliminates harsh neon red lines) */
+html.dark #simple-danger-banner,
+html.dark .border-red-500,
+html.dark .border-red-600 {
+  border-color: rgba(244, 63, 94, 0.35) !important; /* Soft rose with gentle opacity */
+  border-width: 1px !important;
+}
+
+html.dark .border-red-200,
+html.dark .border-red-300 {
+  border-color: rgba(244, 63, 94, 0.25) !important;
+}
+
+/* Eliminate all washed-out milky/muddy pastel backgrounds on subcomponents */
+html.dark [class*="bg-red-50"],
+html.dark [class*="bg-rose-50"],
+html.dark [class*="bg-amber-50"],
+html.dark [class*="bg-yellow-50"],
+html.dark [class*="bg-emerald-50"],
+html.dark [class*="bg-green-50"] {
+  background-color: #18181b !important; /* Zinc-900 elevated surface */
+}
+
+/* Refined, modern border accents on alert subcomponents */
+html.dark [class*="border-amber-200"],
+html.dark [class*="border-amber-300"] {
+  border-color: rgba(245, 158, 11, 0.28) !important;
+}
+
+html.dark [class*="border-emerald-200"],
+html.dark [class*="border-emerald-300"] {
+  border-color: rgba(16, 185, 129, 0.28) !important;
+}
+
+html.dark [class*="border-red-200"],
+html.dark [class*="border-rose-200"] {
+  border-color: rgba(244, 63, 94, 0.28) !important;
+}
+
+/* Glowing, high-contrast dark mode typography for metrics */
+html.dark .text-red-500,
+html.dark .text-red-600 {
+  color: #fb7185 !important; /* Soft rose-400 */
+}
+
+html.dark .text-red-700 {
+  color: #fda4af !important; /* Soft rose-300 */
+}
+
+html.dark .text-amber-500,
+html.dark .text-amber-600,
+html.dark .text-amber-700,
+html.dark .text-amber-800,
+html.dark .text-amber-900 {
+  color: #fbbf24 !important; /* Luminous amber-400 */
+}
+
+html.dark .text-emerald-500,
+html.dark .text-emerald-600,
+html.dark .text-emerald-700,
+html.dark .text-emerald-800 {
+  color: #34d399 !important; /* Crisp emerald-400 */
+}
+
+/* Badges & Tags in Dark Mode */
+html.dark .bg-amber-200,
+html.dark [class*="bg-amber-200"],
+html.dark .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.18) !important;
+  color: #fde68a !important;
+  border: 1px solid rgba(245, 158, 11, 0.40) !important;
+}
+
+html.dark .bg-emerald-200,
+html.dark [class*="bg-emerald-200"],
+html.dark .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.18) !important;
+  color: #a7f3d0 !important;
+  border: 1px solid rgba(16, 185, 129, 0.40) !important;
+}
+
+html.dark .bg-red-200,
+html.dark [class*="bg-red-200"],
+html.dark .bg-red-100,
+html.dark .bg-rose-100 {
+  background-color: rgba(244, 63, 94, 0.18) !important;
+  color: #fecdd3 !important;
+  border: 1px solid rgba(244, 63, 94, 0.40) !important;
+}
+
+html.dark .bg-slate-200,
+html.dark [class*="bg-slate-200"] {
+  background-color: #27272a !important;
+  color: #a1a1aa !important;
+  border: 1px solid #3f3f46 !important;
+}
+
+html.dark .bg-blue-200,
+html.dark [class*="bg-blue-200"],
+html.dark .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.18) !important;
+  color: #93c5fd !important;
+  border: 1px solid rgba(59, 130, 246, 0.40) !important;
+}
+
+html.dark [class*="bg-blue-50"] {
+  background-color: #18181b !important;
+}
+
+
+
+
